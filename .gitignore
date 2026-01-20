@@ -1,0 +1,60 @@
+# --- Maven & Build Results ---
+target/
+*.log
+*.gz
+
+# --- Maven Wrapper ---
+# We generally want to COMMIT the wrapper jar so builds are reproducible/offline capable.
+# If you prefer to download it every time, uncomment the next line:
+# .mvn/wrapper/maven-wrapper.jar
+
+# --- Secrets & Environment (CRITICAL) ---
+# Never push your database passwords or API keys
+.env
+.env.local
+secret.properties
+
+# --- Java Crash Logs ---
+hs_err_pid*
+replay_pid*
+
+# --- IDE: IntelliJ IDEA ---
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# --- IDE: VS Code ---
+.vscode/
+bin/
+
+# --- IDE: Eclipse / STS ---
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# --- IDE: NetBeans ---
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+# --- OS System Files (Junk) ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Docker ---
+# If you build docker locally, you don't want to commit the image data context if it generates files
+docker-compose.override.yml
+
+
+src/main/resources/application.properties
