@@ -34,9 +34,9 @@ public class SecurityConfig {
                     return config;
                 }))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("api/student/**").permitAll() // Public endpoints
-                        .requestMatchers("api/recruiter/**").permitAll() // Public endpoints
-                        .requestMatchers("api/admins/**").permitAll() // Public endpoints
+                        .requestMatchers("/api/student/**").permitAll() // Public endpoints
+                        .requestMatchers("/api/recruiter/**").permitAll() // Public endpoints
+                        .requestMatchers("/api/admins/**").permitAll() // Public endpoints
                         .anyRequest().authenticated()
                 );
 
