@@ -1,3 +1,4 @@
+
 # --- Maven & Build Results ---
 target/
 *.log
@@ -55,6 +56,3 @@ Desktop.ini
 # --- Docker ---
 # If you build docker locally, you don't want to commit the image data context if it generates files
 docker-compose.override.yml
-
-
-src/main/resources/application.properties
