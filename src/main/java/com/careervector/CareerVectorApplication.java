@@ -2,25 +2,24 @@ package com.careervector;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.core.env.Environment;
 
 @SpringBootApplication
 public class CareerVectorApplication {
 
     public static void main(String[] args) {
-        ConfigurableApplicationContext context = SpringApplication.run(CareerVectorApplication.class, args);
+        // --- DEBUG BLOCK: RUNS BEFORE APP STARTS ---
+        System.out.println("========================================");
+        System.out.println("DEBUG: CHECKING RENDER VARIABLES...");
 
-        // --- ADD THIS DEBUGGING BLOCK ---
-        Environment env = context.getEnvironment();
-        String url = env.getProperty("spring.datasource.url");
-        String user = env.getProperty("spring.datasource.username");
+        // Read the raw environment variable from Render
+        String dbUrl = System.getenv("DB_URL");
+        String dbUser = System.getenv("DB_USERNAME");
 
-        System.out.println("==========================================");
-        System.out.println("DEBUG: RENDER DB CONNECTION INFO");
-        System.out.println("URL: " + url);
-        System.out.println("User: " + user);
-        System.out.println("==========================================");
-        // --------------------------------
+        System.out.println("RAW DB_URL: [" + dbUrl + "]");
+        System.out.println("RAW DB_USER: [" + dbUser + "]");
+        System.out.println("========================================");
+        // -------------------------------------------
+
+        SpringApplication.run(CareerVectorApplication.class, args);
     }
 }
