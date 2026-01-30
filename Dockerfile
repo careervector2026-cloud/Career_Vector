@@ -32,5 +32,5 @@ COPY --from=builder /app/target/*.jar app.jar
 # 7. Expose the port
 EXPOSE 8080
 
-# 8. Run the app
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# 8. Run the app (UPDATED WITH IPv4 FLAG)
+ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-jar", "app.jar"]
