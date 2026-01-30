@@ -43,17 +43,32 @@ public class StudentService {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    // --- NEW METHOD: Verify OTP ---
+    // --- METHOD: Verify OTP (Generic) ---
     public boolean verifyOtp(String email, String otpInput) {
-        // Retrieve OTP from Redis using email as key
         String storedOtp = redisTemplate.opsForValue().get(email);
-
         if (storedOtp != null && storedOtp.equals(otpInput)) {
-            // OTP matches! Remove it from Redis to prevent reuse
-            redisTemplate.delete(email);
+            redisTemplate.delete(email); // Delete OTP after successful use
             return true;
         }
         return false;
+    }
+
+    // --- METHOD: Reset Password ---
+    public void resetPassword(String email, String otp, String newPassword) {
+        // 1. Check if User exists
+        Student student = studentRepo.findByEmail(email);
+        if (student == null) {
+            throw new RuntimeException("User not found.");
+        }
+
+        // 2. Verify OTP
+        if (!verifyOtp(email, otp)) {
+            throw new RuntimeException("Invalid or Expired OTP.");
+        }
+
+        // 3. Update Password
+        student.setPassword(passwordEncoder.encode(newPassword));
+        studentRepo.save(student);
     }
 
     public Student save(
@@ -74,11 +89,8 @@ public class StudentService {
         s.setMobileNumber(mobileNumber);
         s.setLeetcodeurl(leetCodeUrl);
         s.setGithubUrl(githubUrl);
-
-        // ✅ Mark as verified since they passed the OTP check in Controller
         s.setVerified(true);
 
-        // Safe Parsing for Integers
         try {
             s.setSemester(Integer.parseInt(semester));
             s.setYear(Integer.parseInt(year));
@@ -86,11 +98,9 @@ public class StudentService {
             throw new RuntimeException("Invalid Semester or Year format");
         }
 
-        // Logic: Parse GPA JSON String
         if (semesterGPAsJson != null && !semesterGPAsJson.isEmpty()) {
             try {
                 Map<String, String> gpaMap = objectMapper.readValue(semesterGPAsJson, new TypeReference<HashMap<String,String>>() {});
-
                 s.setGpaSem1(parseGpa(gpaMap.get("sem1")));
                 s.setGpaSem2(parseGpa(gpaMap.get("sem2")));
                 s.setGpaSem3(parseGpa(gpaMap.get("sem3")));
@@ -99,20 +109,17 @@ public class StudentService {
                 s.setGpaSem6(parseGpa(gpaMap.get("sem6")));
                 s.setGpaSem7(parseGpa(gpaMap.get("sem7")));
                 s.setGpaSem8(parseGpa(gpaMap.get("sem8")));
-
             } catch (Exception e) {
                 System.err.println("Error parsing GPA JSON: " + e.getMessage());
             }
         }
 
-        // Image Upload
         if (image != null && !image.isEmpty()) {
             String fileName = rollNumber + "_avatar_" + System.currentTimeMillis() + ".png";
             uploadFile(image, "images", fileName);
             s.setProfileImageUrl(Storage_url + "public/images/" + fileName);
         }
 
-        // Resume PDF Upload
         if (resume != null && !resume.isEmpty()) {
             String fileName = rollNumber + "_resume_" + System.currentTimeMillis() + ".pdf";
             uploadFile(resume, "resumes", fileName);
@@ -155,9 +162,24 @@ public class StudentService {
         else return null;
     }
 
+    // --- Send OTP for SIGNUP (Throws error if email exists) ---
     public void generateAndSendOtp(String email) {
-        if(studentRepo.findByEmail(email) != null) throw new RuntimeException("Email is already registered. Please login");
+        if(studentRepo.findByEmail(email) != null) {
+            throw new RuntimeException("Email is already registered. Please login");
+        }
+        sendEmailOtp(email, "Welcome to CareerVector! Your Verification Code is: ");
+    }
 
+    // --- Send OTP for RESET PASSWORD (Throws error if email DOES NOT exist) ---
+    public void generateAndSendOtpForReset(String email) {
+        if(studentRepo.findByEmail(email) == null) {
+            throw new RuntimeException("Email not found in our records.");
+        }
+        sendEmailOtp(email, "CareerVector Password Reset. Your Verification Code is: ");
+    }
+
+    // --- Helper to generate and send email ---
+    private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000)+100000);
 
         // Store in Redis (Email -> OTP) for 5 minutes
@@ -167,8 +189,8 @@ public class StudentService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom("careervector2026@gmail.com");
             message.setTo(email);
-            message.setSubject("Action Required: Your CareerVector Verification Code");
-            message.setText("Welcome to CareerVector!\n\nYour Verification Code is: "+otp+"\n\nThis code expires in 5 minutes");
+            message.setSubject("CareerVector Verification Code");
+            message.setText(messagePrefix + otp + "\n\nThis code expires in 5 minutes");
             mailSender.send(message);
         } catch (Exception e) {
             throw new RuntimeException("Failed to send email. Check Internet or credentials.");

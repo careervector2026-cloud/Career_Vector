@@ -22,9 +22,12 @@ public class StudentController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    // --- 1. SEND OTP (For SIGNUP) ---
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String,String> payload){
         String email = payload.get("email");
+        if(email != null) email = email.trim(); // FIX: Remove spaces
+
         if(email == null || email.isEmpty()){
             return new ResponseEntity<>("Email is Required",HttpStatus.BAD_REQUEST);
         }
@@ -36,13 +39,59 @@ public class StudentController {
         }
     }
 
+    // --- 2. FORGOT PASSWORD (SEND OTP for Existing User) ---
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String,String> payload){
+        String email = payload.get("email");
+
+        // --- DEBUGGING LOG ---
+        System.out.println("Forgot Password Request Received for: '" + email + "'");
+
+        if(email == null || email.isEmpty()){
+            return new ResponseEntity<>("Email is Required", HttpStatus.BAD_REQUEST);
+        }
+
+        // FIX: Remove accidental spaces from start/end
+        email = email.trim();
+
+        try {
+            studentService.generateAndSendOtpForReset(email);
+            return ResponseEntity.ok("OTP sent for password reset.");
+        } catch (Exception e) {
+            System.err.println("Forgot Password Error: " + e.getMessage());
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // --- 3. RESET PASSWORD (Verify OTP & Update) ---
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String,String> payload){
+        String email = payload.get("email");
+        String otp = payload.get("otp");
+        String newPassword = payload.get("newPassword");
+
+        if(email != null) email = email.trim(); // FIX: Trim email
+        if(otp != null) otp = otp.trim();       // FIX: Trim OTP
+
+        if(email == null || otp == null || newPassword == null){
+            return new ResponseEntity<>("Email, OTP and New Password are required", HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            studentService.resetPassword(email, otp, newPassword);
+            return ResponseEntity.ok("Password updated successfully.");
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // --- 4. SIGNUP (Keep existing code, just ensure email is trimmed) ---
     @PostMapping("/signup")
     public ResponseEntity<?> signup(
             @RequestParam("roll") String rollNumber,
             @RequestParam("fullName") String fullName,
             @RequestParam("email") String email,
             @RequestParam("password") String password,
-            // ✅ NEW PARAMETER: OTP
             @RequestParam("otp") String otp,
             @RequestParam(value = "username", required = false) String userName,
             @RequestParam("dept") String dept,
@@ -57,14 +106,15 @@ public class StudentController {
             @RequestParam(value = "github", required = false) String githubUrl
     ) {
         try {
-            // ✅ STEP 1: Verify OTP before saving anything
-            boolean isOtpValid = studentService.verifyOtp(email, otp);
+            // Trim inputs
+            email = email.trim();
+            otp = otp.trim();
 
+            boolean isOtpValid = studentService.verifyOtp(email, otp);
             if (!isOtpValid) {
                 return new ResponseEntity<>("Invalid or expired OTP. Please try again.", HttpStatus.BAD_REQUEST);
             }
 
-            // ✅ STEP 2: Proceed with Saving (Student will be marked verified inside service)
             Student saved = studentService.save(
                     rollNumber, fullName, email, password, userName, dept, branch,
                     mobileNumber, semester, year, image, resume,
@@ -78,6 +128,7 @@ public class StudentController {
         }
     }
 
+    // --- 5. LOGIN ---
     @PostMapping("login")
     public ResponseEntity<?> login(@RequestBody LoginData loginData){
         String identifier = loginData.getEmailOrUsername();
@@ -87,6 +138,10 @@ public class StudentController {
         if (identifier == null || identifier.isEmpty()) {
             return new ResponseEntity<>("Email or Username is required", HttpStatus.BAD_REQUEST);
         }
+
+        // Fix: Trim identifier
+        identifier = identifier.trim();
+
         Student student = studentService.findStudent(identifier);
 
         if(student != null && passwordEncoder.matches(loginData.getPassword(), student.getPassword())){

@@ -4,7 +4,7 @@ import com.careervector.model.Recruiter;
 import com.careervector.repo.RecruiterRepo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate; // ✅ Added Redis
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -29,7 +29,7 @@ public class RecruiterService {
     private JavaMailSender mailSender;
 
     @Autowired
-    private StringRedisTemplate redisTemplate; // ✅ Using Redis for consistency
+    private StringRedisTemplate redisTemplate;
 
     @Value("${Storage_url}")
     private String Storage_url;
@@ -37,15 +37,43 @@ public class RecruiterService {
     @Value("${secret_key}")
     private String secret_key;
 
-    // --- OTP Logic ---
-
+    // --- OTP Logic for SIGNUP ---
     public void generateAndSendOtp(String email) {
         if (recruiterRepo.findByEmail(email) != null) {
             throw new RuntimeException("Email is already registered. Please login.");
         }
+        sendEmailOtp(email, "Welcome Recruiter! Your verification code is: ");
+    }
 
+    // --- NEW: OTP Logic for FORGOT PASSWORD ---
+    public void generateAndSendOtpForReset(String email) {
+        if (recruiterRepo.findByEmail(email) == null) {
+            throw new RuntimeException("Email not found. Please register first.");
+        }
+        sendEmailOtp(email, "Password Reset Request. Your verification code is: ");
+    }
+
+    // --- NEW: Reset Password Logic ---
+    public void resetPassword(String email, String otp, String newPassword) {
+        // 1. Check if user exists
+        Recruiter recruiter = recruiterRepo.findByEmail(email);
+        if (recruiter == null) {
+            throw new RuntimeException("User not found.");
+        }
+
+        // 2. Verify OTP
+        if (!verifyOtp(email, otp)) {
+            throw new RuntimeException("Invalid or Expired verification code.");
+        }
+
+        // 3. Update Password
+        recruiter.setPassword(passwordEncoder.encode(newPassword));
+        recruiterRepo.save(recruiter);
+    }
+
+    // Helper to send email
+    private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000) + 100000);
-
         // Store in Redis for 5 minutes
         redisTemplate.opsForValue().set(email, otp, 5, TimeUnit.MINUTES);
 
@@ -53,17 +81,16 @@ public class RecruiterService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom("careervector2026@gmail.com");
             message.setTo(email);
-            message.setSubject("CareerVector Recruiter Verification");
-            message.setText("Welcome Recruiter!\n\nYour verification code is: " + otp + "\n\nThis code expires in 5 minutes.");
+            message.setSubject("CareerVector Verification");
+            message.setText(messagePrefix + otp + "\n\nThis code expires in 5 minutes.");
             mailSender.send(message);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send email.");
+            throw new RuntimeException("Failed to send email. Check configuration.");
         }
     }
 
     public boolean verifyOtp(String email, String otpInput) {
         String storedOtp = redisTemplate.opsForValue().get(email);
-
         if (storedOtp != null && storedOtp.equals(otpInput)) {
             redisTemplate.delete(email); // Remove OTP after use
             return true;
@@ -89,17 +116,12 @@ public class RecruiterService {
         r.setMobile(mobile);
         r.setCompanyName(companyName);
         r.setRole(role);
-
-        // ✅ Mark verified since OTP check passed in Controller
         r.setVerified(true);
 
-        // Image Upload Logic
         if(image != null && !image.isEmpty()){
             String safeUserName = (userName != null && !userName.isEmpty()) ? userName : "recruiter";
             String fileName = safeUserName + "_avatar_" + System.currentTimeMillis() + ".png";
-
             uploadFile(image, "recruiter-images", fileName);
-
             r.setImageUrl(Storage_url + "public/recruiter-images/" + fileName);
         }
 
@@ -114,7 +136,6 @@ public class RecruiterService {
             headers.setContentType(MediaType.parseMediaType(image.getContentType()));
 
             HttpEntity<byte[]> entity = new HttpEntity<>(image.getBytes(), headers);
-
             String baseUploadUrl = Storage_url.endsWith("/") ? Storage_url : Storage_url + "/";
             String finalUrl = baseUploadUrl + bucket + "/" + fileName;
 

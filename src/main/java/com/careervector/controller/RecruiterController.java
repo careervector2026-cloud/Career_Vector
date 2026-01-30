@@ -22,7 +22,7 @@ public class RecruiterController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // STEP 1: Generate & Send OTP
+    // STEP 1: Generate & Send OTP (For SIGNUP - Checks if email is NOT taken)
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> payload) {
         String email = payload.get("email");
@@ -37,7 +37,41 @@ public class RecruiterController {
         }
     }
 
-    // STEP 2: Verify OTP and Save User
+    // --- NEW: Generate & Send OTP (For FORGOT PASSWORD - Checks if email EXISTS) ---
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        if (email == null || email.isEmpty()) {
+            return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
+        }
+        try {
+            recruiterService.generateAndSendOtpForReset(email);
+            return ResponseEntity.ok("OTP sent successfully for password reset.");
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // --- NEW: Reset Password (Verify OTP & Update Password) ---
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String otp = payload.get("otp");
+        String newPassword = payload.get("newPassword");
+
+        if (email == null || otp == null || newPassword == null) {
+            return new ResponseEntity<>("Email, OTP and New Password are required", HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            recruiterService.resetPassword(email, otp, newPassword);
+            return ResponseEntity.ok("Password updated successfully. Please login.");
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // STEP 2: Verify OTP and Save User (Signup)
     @PostMapping("/signup")
     public ResponseEntity<?> signup(
             @RequestParam("email") String email,
@@ -47,18 +81,16 @@ public class RecruiterController {
             @RequestParam("companyName") String companyName,
             @RequestParam("role") String role,
             @RequestParam("password") String password,
-            @RequestParam("otp") String otp, // ✅ Accept OTP
+            @RequestParam("otp") String otp,
             @RequestParam(value = "image", required = false) MultipartFile image
     ) {
         try {
-            // ✅ 1. Verify OTP first
             boolean isOtpValid = recruiterService.verifyOtp(email, otp);
 
             if (!isOtpValid) {
                 return new ResponseEntity<>("Invalid or Expired verification code.", HttpStatus.BAD_REQUEST);
             }
 
-            // ✅ 2. Save User (OTP is valid)
             Recruiter recruiter = recruiterService.save(email, fullName, userName, mobile, companyName, role, password, image);
             return new ResponseEntity<>(recruiter, HttpStatus.CREATED);
 
@@ -81,7 +113,6 @@ public class RecruiterController {
         Recruiter recruiter = recruiterService.findUser(identifier);
 
         if(recruiter != null && passwordEncoder.matches(loginData.getPassword(), recruiter.getPassword())) {
-            // Check verification status
             if(!recruiter.isVerified()) {
                 return new ResponseEntity<>("Account not verified", HttpStatus.FORBIDDEN);
             }
