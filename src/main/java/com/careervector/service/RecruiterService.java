@@ -6,8 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -25,8 +23,9 @@ public class RecruiterService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    // CHANGED: Use EmailService instead of JavaMailSender
     @Autowired
-    private JavaMailSender mailSender;
+    private EmailService emailService;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -45,7 +44,7 @@ public class RecruiterService {
         sendEmailOtp(email, "Welcome Recruiter! Your verification code is: ");
     }
 
-    // --- NEW: OTP Logic for FORGOT PASSWORD ---
+    // --- OTP Logic for FORGOT PASSWORD ---
     public void generateAndSendOtpForReset(String email) {
         if (recruiterRepo.findByEmail(email) == null) {
             throw new RuntimeException("Email not found. Please register first.");
@@ -53,39 +52,34 @@ public class RecruiterService {
         sendEmailOtp(email, "Password Reset Request. Your verification code is: ");
     }
 
-    // --- NEW: Reset Password Logic ---
+    // --- Reset Password Logic ---
     public void resetPassword(String email, String otp, String newPassword) {
-        // 1. Check if user exists
         Recruiter recruiter = recruiterRepo.findByEmail(email);
         if (recruiter == null) {
             throw new RuntimeException("User not found.");
         }
 
-        // 2. Verify OTP
         if (!verifyOtp(email, otp)) {
             throw new RuntimeException("Invalid or Expired verification code.");
         }
 
-        // 3. Update Password
         recruiter.setPassword(passwordEncoder.encode(newPassword));
         recruiterRepo.save(recruiter);
     }
 
-    // Helper to send email
+    // --- Helper to send email via Brevo ---
     private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000) + 100000);
+
         // Store in Redis for 5 minutes
         redisTemplate.opsForValue().set(email, otp, 5, TimeUnit.MINUTES);
 
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom("careervector2026@gmail.com");
-            message.setTo(email);
-            message.setSubject("CareerVector Verification");
-            message.setText(messagePrefix + otp + "\n\nThis code expires in 5 minutes.");
-            mailSender.send(message);
+            // UPDATED: Call EmailService
+            String body = messagePrefix + otp + "\n\nThis code expires in 5 minutes.";
+            emailService.sendEmail(email, "CareerVector Verification", body);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send email. Check configuration.");
+            throw new RuntimeException("Failed to send email: " + e.getMessage());
         }
     }
 
@@ -97,8 +91,6 @@ public class RecruiterService {
         }
         return false;
     }
-
-    // --- User Management Logic ---
 
     public Recruiter findUser(String userNameEmail) {
         Recruiter recruiter;

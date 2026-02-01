@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -37,13 +35,13 @@ public class StudentService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    // CHANGED: Use EmailService instead of JavaMailSender
     @Autowired
-    private JavaMailSender mailSender;
+    private EmailService emailService;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    // --- METHOD: Verify OTP (Generic) ---
     public boolean verifyOtp(String email, String otpInput) {
         String storedOtp = redisTemplate.opsForValue().get(email);
         if (storedOtp != null && storedOtp.equals(otpInput)) {
@@ -53,20 +51,16 @@ public class StudentService {
         return false;
     }
 
-    // --- METHOD: Reset Password ---
     public void resetPassword(String email, String otp, String newPassword) {
-        // 1. Check if User exists
         Student student = studentRepo.findByEmail(email);
         if (student == null) {
             throw new RuntimeException("User not found.");
         }
 
-        // 2. Verify OTP
         if (!verifyOtp(email, otp)) {
             throw new RuntimeException("Invalid or Expired OTP.");
         }
 
-        // 3. Update Password
         student.setPassword(passwordEncoder.encode(newPassword));
         studentRepo.save(student);
     }
@@ -162,7 +156,7 @@ public class StudentService {
         else return null;
     }
 
-    // --- Send OTP for SIGNUP (Throws error if email exists) ---
+    // --- Send OTP for SIGNUP ---
     public void generateAndSendOtp(String email) {
         if(studentRepo.findByEmail(email) != null) {
             throw new RuntimeException("Email is already registered. Please login");
@@ -170,7 +164,7 @@ public class StudentService {
         sendEmailOtp(email, "Welcome to CareerVector! Your Verification Code is: ");
     }
 
-    // --- Send OTP for RESET PASSWORD (Throws error if email DOES NOT exist) ---
+    // --- Send OTP for RESET PASSWORD ---
     public void generateAndSendOtpForReset(String email) {
         if(studentRepo.findByEmail(email) == null) {
             throw new RuntimeException("Email not found in our records.");
@@ -178,22 +172,19 @@ public class StudentService {
         sendEmailOtp(email, "CareerVector Password Reset. Your Verification Code is: ");
     }
 
-    // --- Helper to generate and send email ---
+    // UPDATED Helper: Uses EmailService (Brevo API)
     private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000)+100000);
 
-        // Store in Redis (Email -> OTP) for 5 minutes
+        // Store in Redis
         redisTemplate.opsForValue().set(email, otp, 5, TimeUnit.MINUTES);
 
         try{
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom("careervector2026@gmail.com");
-            message.setTo(email);
-            message.setSubject("CareerVector Verification Code");
-            message.setText(messagePrefix + otp + "\n\nThis code expires in 5 minutes");
-            mailSender.send(message);
+            // Call EmailService
+            String body = messagePrefix + otp + "\n\nThis code expires in 5 minutes";
+            emailService.sendEmail(email, "CareerVector Verification Code", body);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send email. Check Internet or credentials.");
+            throw new RuntimeException("Failed to send email: " + e.getMessage());
         }
     }
 }
