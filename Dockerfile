@@ -1,36 +1,33 @@
 # ------------------------------------------------------------------
 # STAGE 1: Build the application
 # ------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
-# 1. Copy Maven Wrapper and Project Object Model (POM)
+# 1. Copy Maven Wrapper and POM
 COPY .mvn/ .mvn
 COPY mvnw pom.xml ./
-
-# 2. Grant execution permissions to the wrapper
 RUN chmod +x mvnw
 
-# 3. Download Dependencies (Cached if pom.xml doesn't change)
+# 2. Download Dependencies
 RUN ./mvnw dependency:go-offline
 
-# 4. Copy the actual source code
+# 3. Copy Source and Build
 COPY src ./src
-
-# 5. Build the JAR file (Skip tests to speed up deployment)
 RUN ./mvnw clean package -DskipTests
 
 # ------------------------------------------------------------------
-# STAGE 2: Run the application
+# STAGE 2: Run the application (Using Standard Linux, NOT Alpine)
 # ------------------------------------------------------------------
-FROM eclipse-temurin:21-jre-alpine
+# CRITICAL CHANGE: Switched from 'alpine' to standard 'jdk' to fix DNS issues
+FROM eclipse-temurin:21-jdk
 WORKDIR /app
 
-# 6. Copy the JAR from the builder stage
+# 4. Copy the JAR
 COPY --from=builder /app/target/*.jar app.jar
 
-# 7. Expose the port
+# 5. Expose Port
 EXPOSE 8080
 
-# 8. Run the app (UPDATED WITH IPv4 FLAG)
+# 6. Run with IPv4 forced (Fixes the original timeout issue)
 ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-jar", "app.jar"]
