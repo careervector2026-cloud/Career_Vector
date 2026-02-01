@@ -35,7 +35,6 @@ public class StudentService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // CHANGED: Use EmailService instead of JavaMailSender
     @Autowired
     private EmailService emailService;
 
@@ -45,7 +44,7 @@ public class StudentService {
     public boolean verifyOtp(String email, String otpInput) {
         String storedOtp = redisTemplate.opsForValue().get(email);
         if (storedOtp != null && storedOtp.equals(otpInput)) {
-            redisTemplate.delete(email); // Delete OTP after successful use
+            redisTemplate.delete(email);
             return true;
         }
         return false;
@@ -85,11 +84,24 @@ public class StudentService {
         s.setGithubUrl(githubUrl);
         s.setVerified(true);
 
+        // --- CRITICAL FIX: Trim and Validate Integers ---
         try {
-            s.setSemester(Integer.parseInt(semester));
-            s.setYear(Integer.parseInt(year));
+            // 1. Check for null or empty strings
+            if (semester == null || semester.trim().isEmpty()) {
+                throw new NumberFormatException("Semester is missing");
+            }
+            if (year == null || year.trim().isEmpty()) {
+                throw new NumberFormatException("Year is missing");
+            }
+
+            // 2. Parse trimmed values
+            s.setSemester(Integer.parseInt(semester.trim()));
+            s.setYear(Integer.parseInt(year.trim()));
+
         } catch (NumberFormatException e) {
-            throw new RuntimeException("Invalid Semester or Year format");
+            // Debug Log to see exactly what failed
+            System.err.println("DEBUG: Parse Error - Semester: '" + semester + "', Year: '" + year + "'");
+            throw new RuntimeException("Invalid Semester or Year format. Please enter numbers only.");
         }
 
         if (semesterGPAsJson != null && !semesterGPAsJson.isEmpty()) {
@@ -124,9 +136,9 @@ public class StudentService {
     }
 
     private Double parseGpa(String value) {
-        if (value == null || value.isEmpty()) return 0.0;
+        if (value == null || value.trim().isEmpty()) return 0.0;
         try {
-            return Double.parseDouble(value);
+            return Double.parseDouble(value.trim());
         } catch (NumberFormatException e) {
             return 0.0;
         }
@@ -156,7 +168,6 @@ public class StudentService {
         else return null;
     }
 
-    // --- Send OTP for SIGNUP ---
     public void generateAndSendOtp(String email) {
         if(studentRepo.findByEmail(email) != null) {
             throw new RuntimeException("Email is already registered. Please login");
@@ -164,7 +175,6 @@ public class StudentService {
         sendEmailOtp(email, "Welcome to CareerVector! Your Verification Code is: ");
     }
 
-    // --- Send OTP for RESET PASSWORD ---
     public void generateAndSendOtpForReset(String email) {
         if(studentRepo.findByEmail(email) == null) {
             throw new RuntimeException("Email not found in our records.");
@@ -172,15 +182,11 @@ public class StudentService {
         sendEmailOtp(email, "CareerVector Password Reset. Your Verification Code is: ");
     }
 
-    // UPDATED Helper: Uses EmailService (Brevo API)
     private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000)+100000);
-
-        // Store in Redis
         redisTemplate.opsForValue().set(email, otp, 5, TimeUnit.MINUTES);
 
         try{
-            // Call EmailService
             String body = messagePrefix + otp + "\n\nThis code expires in 5 minutes";
             emailService.sendEmail(email, "CareerVector Verification Code", body);
         } catch (Exception e) {
