@@ -1,6 +1,7 @@
 package com.careervector.controller;
 
 import com.careervector.dto.LoginData;
+import com.careervector.dto.RecruiterUpdateDto;
 import com.careervector.model.Recruiter;
 import com.careervector.service.RecruiterService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -120,5 +121,54 @@ public class RecruiterController {
         }
 
         return new ResponseEntity<>("Invalid Credentials", HttpStatus.UNAUTHORIZED);
+    }
+
+    @PatchMapping("/profile")
+    public ResponseEntity<?> updateProfile(@RequestBody RecruiterUpdateDto recruiterUpdateDto){
+        try{
+            Recruiter recruiter = recruiterService.updateREcruiterProfile(recruiterUpdateDto);
+            return ResponseEntity.ok(Map.of(
+               "sucess",true,
+               "message","profile update sucessfull",
+               "recruiter",recruiter
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(400).body(Map.of("sucess",false,"message",e.getMessage()));
+        }
+        catch (Exception e){
+            return ResponseEntity.status(500).body(Map.of("sucess",false,"message","Internal Server Error"));
+        }
+    }
+
+    @PatchMapping("/change-password")
+    public ResponseEntity<?> changePassword(@RequestBody Map<String,String> payload){
+        String email = payload.get("email");
+        String password = payload.get("password");
+        try{
+            recruiterService.changePassword(email,password);
+            return ResponseEntity.ok("Password updated sucessfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/upload-image")
+    public ResponseEntity<?> uploadImage(
+            @RequestParam("email") String email,
+            @RequestParam("file") MultipartFile file
+    ){
+        try{
+            if(file.isEmpty())return ResponseEntity.badRequest().body("File is Empty");
+            if(email==null || email.isEmpty())return ResponseEntity.badRequest().body("Email is Required");
+            String fileUrl = recruiterService.uploadProfilePic(email,file);
+            return ResponseEntity.ok(Map.of(
+                    "sucess",true,
+                    "message","Profile Pic Updated",
+                    "url",fileUrl
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("UPload failed" + e.getMessage());
+        }
     }
 }

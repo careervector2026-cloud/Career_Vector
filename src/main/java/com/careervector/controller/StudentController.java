@@ -1,6 +1,7 @@
 package com.careervector.controller;
 
 import com.careervector.dto.LoginData;
+import com.careervector.dto.StudentUpdateDto;
 import com.careervector.model.Student;
 import com.careervector.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -152,5 +153,76 @@ public class StudentController {
         }
 
         return new ResponseEntity<>("Invalid Credentials", HttpStatus.UNAUTHORIZED);
+    }
+
+    @PatchMapping("/profile")
+    public ResponseEntity<?> updateProfile(@RequestBody StudentUpdateDto studentUpdateDto){
+        try{
+            Student student = studentService.updateStudentProfile(studentUpdateDto);
+            return ResponseEntity.ok(Map.of(
+                    "sucess",true,
+                    "message","Profile update sucess",
+                    "student",student
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(400).body(Map.of("success", false, "message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("success", false, "message", "Internal Server Error"));
+        }
+    }
+    @PatchMapping("/change-password")
+    public ResponseEntity<?> changePassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String password = payload.get("password");
+
+        try {
+            studentService.changePassword(email, password);
+            return ResponseEntity.ok("Password updated successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/upload-image")
+    public ResponseEntity<?> uploadImage(
+            @RequestParam("email") String email,
+            @RequestParam("file") MultipartFile file
+    ) {
+        try {
+            if (file.isEmpty()) return ResponseEntity.badRequest().body("File is empty");
+            if (email == null || email.isEmpty()) return ResponseEntity.badRequest().body("Email is required");
+
+            String fileUrl = studentService.uploadProfilePic(email, file);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Profile picture updated",
+                    "url", fileUrl
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Upload failed: " + e.getMessage());
+        }
+    }
+    @PatchMapping("/upload-resume")
+    public ResponseEntity<?> uploadResume(
+            @RequestParam("email") String email,
+            @RequestParam("file") MultipartFile file
+    ) {
+        try {
+            if (file.isEmpty()) return ResponseEntity.badRequest().body("File is empty");
+            if (email == null || email.isEmpty()) return ResponseEntity.badRequest().body("Email is required");
+
+            String fileUrl = studentService.uploadResume(email, file);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Resume uploaded successfully",
+                    "url", fileUrl
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Upload failed: " + e.getMessage());
+        }
     }
 }

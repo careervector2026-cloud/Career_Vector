@@ -1,19 +1,17 @@
 package com.careervector.service;
 
+import com.careervector.dto.StudentUpdateDto;
 import com.careervector.model.Student;
 import com.careervector.repo.StudentRepo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Random;
@@ -21,16 +19,12 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class StudentService {
+
     @Autowired
     private StudentRepo studentRepo;
 
-    @Value("${Storage_url}")
-    private String Storage_url;
-
-    @Value("${secret_key}")
-    private String secret_key;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private SupabaseService supabaseService; // Injected Service
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -41,36 +35,60 @@ public class StudentService {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    public boolean verifyOtp(String email, String otpInput) {
-        String storedOtp = redisTemplate.opsForValue().get(email);
-        if (storedOtp != null && storedOtp.equals(otpInput)) {
-            redisTemplate.delete(email);
-            return true;
-        }
-        return false;
-    }
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public void resetPassword(String email, String otp, String newPassword) {
+    // --- 1. Upload Profile Picture ---
+    @Transactional
+    public String uploadProfilePic(String email, MultipartFile file) {
         Student student = studentRepo.findByEmail(email);
-        if (student == null) {
-            throw new RuntimeException("User not found.");
+        if (student == null) throw new RuntimeException("Student not found");
+
+        // Delete old image if exists
+        if (student.getProfileImageUrl() != null && !student.getProfileImageUrl().isEmpty()) {
+            String oldFileName = supabaseService.extractFileNameFromUrl(student.getProfileImageUrl());
+            if (oldFileName != null) {
+                supabaseService.deleteFile("images", oldFileName);
+            }
         }
 
-        if (!verifyOtp(email, otp)) {
-            throw new RuntimeException("Invalid or Expired OTP.");
-        }
+        // Upload new image
+        String fileName = student.getRollNumber() + "_avatar_" + System.currentTimeMillis() + ".png";
+        String newUrl = supabaseService.uploadFile(file, "images", fileName);
 
-        student.setPassword(passwordEncoder.encode(newPassword));
+        student.setProfileImageUrl(newUrl);
         studentRepo.save(student);
+
+        return newUrl;
     }
 
-    public Student save(
-            String rollNumber, String fullName, String email, String password, String userName,
-            String dept, String branch, String mobileNumber, String semester, String year,
-            MultipartFile image, MultipartFile resume,
-            String semesterGPAsJson,
-            String leetCodeUrl, String githubUrl
-    ) {
+    // --- 2. Upload Resume ---
+    @Transactional
+    public String uploadResume(String email, MultipartFile file) {
+        Student student = studentRepo.findByEmail(email);
+        if (student == null) throw new RuntimeException("Student not found");
+
+        // Delete old resume if exists
+        if (student.getResumeUrl() != null && !student.getResumeUrl().isEmpty()) {
+            String oldFileName = supabaseService.extractFileNameFromUrl(student.getResumeUrl());
+            if (oldFileName != null) {
+                supabaseService.deleteFile("resumes", oldFileName);
+            }
+        }
+
+        // Upload new resume
+        String fileName = student.getRollNumber() + "_resume_" + System.currentTimeMillis() + ".pdf";
+        String newUrl = supabaseService.uploadFile(file, "resumes", fileName);
+
+        student.setResumeUrl(newUrl);
+        studentRepo.save(student);
+
+        return newUrl;
+    }
+
+    public Student save(String rollNumber, String fullName, String email, String password, String userName,
+                        String dept, String branch, String mobileNumber, String semester, String year,
+                        MultipartFile image, MultipartFile resume, String semesterGPAsJson,
+                        String leetCodeUrl, String githubUrl) {
         Student s = new Student();
         s.setRollNumber(rollNumber);
         s.setFullName(fullName);
@@ -84,23 +102,12 @@ public class StudentService {
         s.setGithubUrl(githubUrl);
         s.setVerified(true);
 
-        // --- CRITICAL FIX: Trim and Validate Integers ---
         try {
-            // 1. Check for null or empty strings
-            if (semester == null || semester.trim().isEmpty()) {
-                throw new NumberFormatException("Semester is missing");
-            }
-            if (year == null || year.trim().isEmpty()) {
-                throw new NumberFormatException("Year is missing");
-            }
-
-            // 2. Parse trimmed values
+            if (semester == null || semester.trim().isEmpty()) throw new NumberFormatException("Semester is missing");
+            if (year == null || year.trim().isEmpty()) throw new NumberFormatException("Year is missing");
             s.setSemester(Integer.parseInt(semester.trim()));
             s.setYear(Integer.parseInt(year.trim()));
-
         } catch (NumberFormatException e) {
-            // Debug Log to see exactly what failed
-            System.err.println("DEBUG: Parse Error - Semester: '" + semester + "', Year: '" + year + "'");
             throw new RuntimeException("Invalid Semester or Year format. Please enter numbers only.");
         }
 
@@ -120,16 +127,17 @@ public class StudentService {
             }
         }
 
+        // --- Use Supabase Service for Signup Uploads ---
         if (image != null && !image.isEmpty()) {
             String fileName = rollNumber + "_avatar_" + System.currentTimeMillis() + ".png";
-            uploadFile(image, "images", fileName);
-            s.setProfileImageUrl(Storage_url + "public/images/" + fileName);
+            String url = supabaseService.uploadFile(image, "images", fileName);
+            s.setProfileImageUrl(url);
         }
 
         if (resume != null && !resume.isEmpty()) {
             String fileName = rollNumber + "_resume_" + System.currentTimeMillis() + ".pdf";
-            uploadFile(resume, "resumes", fileName);
-            s.setResumeUrl(Storage_url + "public/resumes/" + fileName);
+            String url = supabaseService.uploadFile(resume, "resumes", fileName);
+            s.setResumeUrl(url);
         }
 
         return studentRepo.save(s);
@@ -144,21 +152,21 @@ public class StudentService {
         }
     }
 
-    private void uploadFile(MultipartFile file, String bucket, String fileName) {
-        try {
-            RestTemplate rest = new RestTemplate();
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + secret_key);
-            headers.setContentType(MediaType.parseMediaType(file.getContentType()));
-
-            HttpEntity<byte[]> entity = new HttpEntity<>(file.getBytes(), headers);
-            String baseUploadUrl = Storage_url.endsWith("/") ? Storage_url : Storage_url + "/";
-            String finalUrl = baseUploadUrl + bucket + "/" + fileName;
-
-            rest.postForEntity(finalUrl, entity, String.class);
-        } catch (IOException e) {
-            throw new RuntimeException("Supabase Storage Upload failed: " + e.getMessage());
+    public boolean verifyOtp(String email, String otpInput) {
+        String storedOtp = redisTemplate.opsForValue().get(email);
+        if (storedOtp != null && storedOtp.equals(otpInput)) {
+            redisTemplate.delete(email);
+            return true;
         }
+        return false;
+    }
+
+    public void resetPassword(String email, String otp, String newPassword) {
+        Student student = studentRepo.findByEmail(email);
+        if (student == null) throw new RuntimeException("User not found.");
+        if (!verifyOtp(email, otp)) throw new RuntimeException("Invalid or Expired OTP.");
+        student.setPassword(passwordEncoder.encode(newPassword));
+        studentRepo.save(student);
     }
 
     public Student findStudent(String userNameEmail) {
@@ -169,28 +177,52 @@ public class StudentService {
     }
 
     public void generateAndSendOtp(String email) {
-        if(studentRepo.findByEmail(email) != null) {
-            throw new RuntimeException("Email is already registered. Please login");
-        }
+        if(studentRepo.findByEmail(email) != null) throw new RuntimeException("Email is already registered. Please login");
         sendEmailOtp(email, "Welcome to CareerVector! Your Verification Code is: ");
     }
 
     public void generateAndSendOtpForReset(String email) {
-        if(studentRepo.findByEmail(email) == null) {
-            throw new RuntimeException("Email not found in our records.");
-        }
+        if(studentRepo.findByEmail(email) == null) throw new RuntimeException("Email not found in our records.");
         sendEmailOtp(email, "CareerVector Password Reset. Your Verification Code is: ");
     }
 
     private void sendEmailOtp(String email, String messagePrefix) {
         String otp = String.valueOf(new Random().nextInt(900000)+100000);
         redisTemplate.opsForValue().set(email, otp, 5, TimeUnit.MINUTES);
-
         try{
             String body = messagePrefix + otp + "\n\nThis code expires in 5 minutes";
             emailService.sendEmail(email, "CareerVector Verification Code", body);
         } catch (Exception e) {
             throw new RuntimeException("Failed to send email: " + e.getMessage());
         }
+    }
+
+    @Transactional
+    public Student updateStudentProfile(StudentUpdateDto studentUpdateDto) {
+        if(studentUpdateDto.getEmail() ==null || studentUpdateDto.getEmail().isEmpty()) throw new RuntimeException("Email is required.");
+        Student student = studentRepo.findByEmail(studentUpdateDto.getEmail());
+        if(student==null) throw new RuntimeException("Student not found.");
+
+        if(studentUpdateDto.getMobileNumber()!=null)student.setMobileNumber(studentUpdateDto.getMobileNumber());
+        if(studentUpdateDto.getGithubUrl()!=null)student.setGithubUrl(studentUpdateDto.getGithubUrl());
+        if(studentUpdateDto.getLeetcodeUrl()!=null)student.setLeetcodeurl(studentUpdateDto.getLeetcodeUrl());
+
+        if(studentUpdateDto.getGpa_sem_1()!=null)student.setGpaSem1(studentUpdateDto.getGpa_sem_1());
+        if(studentUpdateDto.getGpa_sem_2()!=null)student.setGpaSem2(studentUpdateDto.getGpa_sem_2());
+        if(studentUpdateDto.getGpa_sem_3()!=null)student.setGpaSem3(studentUpdateDto.getGpa_sem_3());
+        if(studentUpdateDto.getGpa_sem_4()!=null)student.setGpaSem4(studentUpdateDto.getGpa_sem_4());
+        if(studentUpdateDto.getGpa_sem_5()!=null)student.setGpaSem5(studentUpdateDto.getGpa_sem_5());
+        if(studentUpdateDto.getGpa_sem_6()!=null)student.setGpaSem6(studentUpdateDto.getGpa_sem_6());
+        if(studentUpdateDto.getGpa_sem_7()!=null)student.setGpaSem7(studentUpdateDto.getGpa_sem_7());
+        if(studentUpdateDto.getGpa_sem_8()!=null)student.setGpaSem8(studentUpdateDto.getGpa_sem_8());
+
+        return studentRepo.save(student);
+    }
+
+    public void changePassword(String email, String password) {
+        Student student = studentRepo.findByEmail(email);
+        if(student == null) throw new RuntimeException("Student not found.");
+        student.setPassword(passwordEncoder.encode(password));
+        studentRepo.save(student);
     }
 }
