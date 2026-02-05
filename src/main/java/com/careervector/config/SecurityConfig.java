@@ -28,15 +28,16 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable()) // Disable CSRF for REST APIs
                 .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration config = new CorsConfiguration();
-                    config.setAllowedOrigins(List.of("*"));
-                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE","PATCH", "OPTIONS"));
+                    config.setAllowedOrigins(List.of(frontend_Url));
+                    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE","PATCH","OPTIONS"));
                     config.setAllowedHeaders(List.of("*"));
                     return config;
                 }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/student/**").permitAll() // Public endpoints
                         .requestMatchers("/api/recruiter/**").permitAll() // Public endpoints
-                        .requestMatchers("/api/admins/**").permitAll() // Public endpoints
+                        .requestMatchers("/api/admins/**").permitAll()
+                        .requestMatchers("/api/jobs/**").permitAll()// Public endpoints
                         .anyRequest().authenticated()
                 );
 

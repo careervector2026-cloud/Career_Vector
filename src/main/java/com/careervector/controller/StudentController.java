@@ -2,7 +2,9 @@ package com.careervector.controller;
 
 import com.careervector.dto.LoginData;
 import com.careervector.dto.StudentUpdateDto;
+import com.careervector.model.JobApplication;
 import com.careervector.model.Student;
+import com.careervector.service.JobService;
 import com.careervector.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -11,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -22,12 +25,14 @@ public class StudentController {
     private StudentService studentService;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private JobService jobService;
 
     // --- 1. SEND OTP (For SIGNUP) ---
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String,String> payload){
         String email = payload.get("email");
-        if(email != null) email = email.trim(); // FIX: Remove spaces
+        if(email != null) email = email.trim();
 
         if(email == null || email.isEmpty()){
             return new ResponseEntity<>("Email is Required",HttpStatus.BAD_REQUEST);
@@ -40,19 +45,16 @@ public class StudentController {
         }
     }
 
-    // --- 2. FORGOT PASSWORD (SEND OTP for Existing User) ---
+    // --- 2. FORGOT PASSWORD ---
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String,String> payload){
         String email = payload.get("email");
-
-        // --- DEBUGGING LOG ---
         System.out.println("Forgot Password Request Received for: '" + email + "'");
 
         if(email == null || email.isEmpty()){
             return new ResponseEntity<>("Email is Required", HttpStatus.BAD_REQUEST);
         }
 
-        // FIX: Remove accidental spaces from start/end
         email = email.trim();
 
         try {
@@ -64,15 +66,15 @@ public class StudentController {
         }
     }
 
-    // --- 3. RESET PASSWORD (Verify OTP & Update) ---
+    // --- 3. RESET PASSWORD ---
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String,String> payload){
         String email = payload.get("email");
         String otp = payload.get("otp");
         String newPassword = payload.get("newPassword");
 
-        if(email != null) email = email.trim(); // FIX: Trim email
-        if(otp != null) otp = otp.trim();       // FIX: Trim OTP
+        if(email != null) email = email.trim();
+        if(otp != null) otp = otp.trim();
 
         if(email == null || otp == null || newPassword == null){
             return new ResponseEntity<>("Email, OTP and New Password are required", HttpStatus.BAD_REQUEST);
@@ -86,7 +88,7 @@ public class StudentController {
         }
     }
 
-    // --- 4. SIGNUP (Keep existing code, just ensure email is trimmed) ---
+    // --- 4. SIGNUP ---
     @PostMapping("/signup")
     public ResponseEntity<?> signup(
             @RequestParam("roll") String rollNumber,
@@ -107,7 +109,6 @@ public class StudentController {
             @RequestParam(value = "github", required = false) String githubUrl
     ) {
         try {
-            // Trim inputs
             email = email.trim();
             otp = otp.trim();
 
@@ -140,7 +141,6 @@ public class StudentController {
             return new ResponseEntity<>("Email or Username is required", HttpStatus.BAD_REQUEST);
         }
 
-        // Fix: Trim identifier
         identifier = identifier.trim();
 
         Student student = studentService.findStudent(identifier);
@@ -153,6 +153,13 @@ public class StudentController {
         }
 
         return new ResponseEntity<>("Invalid Credentials", HttpStatus.UNAUTHORIZED);
+    }
+
+    // --- 6. GET SCORED JOBS (NEW ENDPOINT) ---
+    @GetMapping("/{rollNumber}/get-scored-jobs")
+    public ResponseEntity<List<Map<String, Object>>> getScoredJobs(@PathVariable String rollNumber) {
+        // Calls the service method that handles null scores if skills are missing
+        return ResponseEntity.ok(jobService.getJobsWithScores(rollNumber));
     }
 
     @PatchMapping("/profile")
@@ -170,6 +177,7 @@ public class StudentController {
             return ResponseEntity.status(500).body(Map.of("success", false, "message", "Internal Server Error"));
         }
     }
+
     @PatchMapping("/change-password")
     public ResponseEntity<?> changePassword(@RequestBody Map<String, String> payload) {
         String email = payload.get("email");
@@ -204,6 +212,7 @@ public class StudentController {
                     .body("Upload failed: " + e.getMessage());
         }
     }
+
     @PatchMapping("/upload-resume")
     public ResponseEntity<?> uploadResume(
             @RequestParam("email") String email,
@@ -224,5 +233,20 @@ public class StudentController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Upload failed: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/apply/{jobId}")
+    public ResponseEntity<String> applyToJob(
+            @PathVariable Long jobId,
+            @RequestParam String rollNumber) {
+        jobService.applyForJob(jobId, rollNumber);
+        return ResponseEntity.ok("Application submitted successfully!");
+    }
+    // StudentController.java
+
+    @GetMapping("/{rollNumber}/applications")
+    public ResponseEntity<List<JobApplication>> getMyApplications(@PathVariable String rollNumber) {
+        // This uses the JobApplicationRepo to find records by student roll number
+        return ResponseEntity.ok(jobService.getStudentApplications(rollNumber));
     }
 }

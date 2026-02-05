@@ -22,7 +22,37 @@ public class EmailService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
-     * Sends an email using the Brevo HTTP API (Port 443).
+     * Sends an automated shortlist notification using the professional template.
+     * Triggered by the recruiter when they click the 'Send' button on a shortlisted candidate.
+     */
+    public void sendShortlistNotification(String toEmail, String studentName, String jobTitle, String companyName) {
+        String subject = "Application Update: Shortlisted for " + jobTitle;
+        String bodyContent = "Hi " + studentName + ",\n\n" +
+                "Congratulations! You have been shortlisted for the role of " + jobTitle + " at " + companyName + ". " +
+                "Further updates regarding the next steps and interview scheduling will be shared with you soon.\n\n" +
+                "Best regards,\n" +
+                "Recruitment Team\n" +
+                companyName;
+
+        // Calls the core sendEmail method to execute the HTTP request
+        this.sendEmail(toEmail, subject, bodyContent);
+    }
+    // Add this method to your EmailService.java
+
+    public void sendRejectionNotification(String toEmail, String studentName, String jobTitle, String companyName) {
+        String subject = "Update regarding your application for " + jobTitle;
+        String bodyContent = "Hi " + studentName + ",\n\n" +
+                "Thank you for your interest in the " + jobTitle + " position at " + companyName + ". " +
+                "After careful review of your application, we regret to inform you that we will not be moving forward with your candidacy at this time.\n\n" +
+                "We appreciate the time you took to apply and wish you the very best in your job search.\n\n" +
+                "Best regards,\n" +
+                "Recruitment Team\n" +
+                companyName;
+
+        this.sendEmail(toEmail, subject, bodyContent);
+    }
+    /**
+     * Core method to send an email using the Brevo HTTP API (Port 443).
      * This bypasses SMTP ports (587/465) which are often blocked on cloud hosting.
      */
     public void sendEmail(String toEmail, String subject, String bodyContent) {

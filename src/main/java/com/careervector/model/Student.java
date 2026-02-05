@@ -2,6 +2,8 @@ package com.careervector.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 public class Student {
@@ -20,6 +22,10 @@ public class Student {
     @JsonProperty("Semester")
     private int semester;
     private int year;
+    @Column(columnDefinition = "TEXT")
+    @Getter
+    @Setter
+    private String skills;
     @JsonProperty("gpa_sem_1") private Double gpaSem1;
     @JsonProperty("gpa_sem_2") private Double gpaSem2;
     @JsonProperty("gpa_sem_3") private Double gpaSem3;

@@ -23,56 +23,22 @@ public class RecruiterController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // STEP 1: Generate & Send OTP (For SIGNUP - Checks if email is NOT taken)
+    // --- 1. SIGNUP & OTP ---
+
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> payload) {
         String email = payload.get("email");
         if (email == null || email.isEmpty()) {
-            return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
+            return ResponseEntity.badRequest().body("Email is required");
         }
         try {
             recruiterService.generateAndSendOtp(email);
             return ResponseEntity.ok("OTP sent successfully to " + email);
         } catch (Exception e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // --- NEW: Generate & Send OTP (For FORGOT PASSWORD - Checks if email EXISTS) ---
-    @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> payload) {
-        String email = payload.get("email");
-        if (email == null || email.isEmpty()) {
-            return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
-        }
-        try {
-            recruiterService.generateAndSendOtpForReset(email);
-            return ResponseEntity.ok("OTP sent successfully for password reset.");
-        } catch (Exception e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    // --- NEW: Reset Password (Verify OTP & Update Password) ---
-    @PostMapping("/reset-password")
-    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> payload) {
-        String email = payload.get("email");
-        String otp = payload.get("otp");
-        String newPassword = payload.get("newPassword");
-
-        if (email == null || otp == null || newPassword == null) {
-            return new ResponseEntity<>("Email, OTP and New Password are required", HttpStatus.BAD_REQUEST);
-        }
-
-        try {
-            recruiterService.resetPassword(email, otp, newPassword);
-            return ResponseEntity.ok("Password updated successfully. Please login.");
-        } catch (Exception e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    // STEP 2: Verify OTP and Save User (Signup)
     @PostMapping("/signup")
     public ResponseEntity<?> signup(
             @RequestParam("email") String email,
@@ -87,7 +53,6 @@ public class RecruiterController {
     ) {
         try {
             boolean isOtpValid = recruiterService.verifyOtp(email, otp);
-
             if (!isOtpValid) {
                 return new ResponseEntity<>("Invalid or Expired verification code.", HttpStatus.BAD_REQUEST);
             }
@@ -96,15 +61,16 @@ public class RecruiterController {
             return new ResponseEntity<>(recruiter, HttpStatus.CREATED);
 
         } catch (Exception e) {
-            e.printStackTrace();
             return new ResponseEntity<>("Error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    // Login Endpoint
+    // --- 2. LOGIN ---
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginData loginData){
         String identifier = loginData.getEmailOrUsername();
+//        System.out.println("🚨 LOGIN ENDPOINT HIT: " + loginData.getEmailOrUsername());
         if(identifier == null || identifier.isEmpty()) identifier = loginData.getEmail();
 
         if(identifier == null || identifier.isEmpty()){
@@ -123,20 +89,56 @@ public class RecruiterController {
         return new ResponseEntity<>("Invalid Credentials", HttpStatus.UNAUTHORIZED);
     }
 
+    // --- 3. PASSWORD RESET FLOW ---
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        if (email == null || email.isEmpty()) {
+            return ResponseEntity.badRequest().body("Email is required");
+        }
+        try {
+            recruiterService.generateAndSendOtpForReset(email);
+            return ResponseEntity.ok("OTP sent successfully for password reset.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String otp = payload.get("otp");
+        String newPassword = payload.get("newPassword");
+
+        if (email == null || otp == null || newPassword == null) {
+            return ResponseEntity.badRequest().body("Email, OTP and New Password are required");
+        }
+
+        try {
+            recruiterService.resetPassword(email, otp, newPassword);
+            return ResponseEntity.ok("Password updated successfully. Please login.");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // --- 4. PROFILE UPDATES (Authenticated) ---
+
     @PatchMapping("/profile")
     public ResponseEntity<?> updateProfile(@RequestBody RecruiterUpdateDto recruiterUpdateDto){
         try{
             Recruiter recruiter = recruiterService.updateREcruiterProfile(recruiterUpdateDto);
             return ResponseEntity.ok(Map.of(
-               "sucess",true,
-               "message","profile update sucessfull",
-               "recruiter",recruiter
+                    "success", true,
+                    "message", "Profile updated successfully",
+                    "recruiter", recruiter
             ));
         } catch (RuntimeException e) {
-            return ResponseEntity.status(400).body(Map.of("sucess",false,"message",e.getMessage()));
+            return ResponseEntity.status(400).body(Map.of("success", false, "message", e.getMessage()));
         }
         catch (Exception e){
-            return ResponseEntity.status(500).body(Map.of("sucess",false,"message","Internal Server Error"));
+            return ResponseEntity.status(500).body(Map.of("success", false, "message", "Internal Server Error"));
         }
     }
 
@@ -145,30 +147,33 @@ public class RecruiterController {
         String email = payload.get("email");
         String password = payload.get("password");
         try{
-            recruiterService.changePassword(email,password);
-            return ResponseEntity.ok("Password updated sucessfully");
+            recruiterService.changePassword(email, password);
+            return ResponseEntity.ok("Password updated successfully");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
+    // ✅ FIXED: Changed endpoint to "/upload-image" to match your recruiterSlice.js
     @PatchMapping("/upload-image")
     public ResponseEntity<?> uploadImage(
             @RequestParam("email") String email,
             @RequestParam("file") MultipartFile file
     ){
         try{
-            if(file.isEmpty())return ResponseEntity.badRequest().body("File is Empty");
-            if(email==null || email.isEmpty())return ResponseEntity.badRequest().body("Email is Required");
-            String fileUrl = recruiterService.uploadProfilePic(email,file);
+            if(file.isEmpty()) return ResponseEntity.badRequest().body("File is Empty");
+            if(email == null || email.isEmpty()) return ResponseEntity.badRequest().body("Email is Required");
+
+            String fileUrl = recruiterService.uploadProfilePic(email, file);
+
             return ResponseEntity.ok(Map.of(
-                    "sucess",true,
-                    "message","Profile Pic Updated",
-                    "url",fileUrl
+                    "success", true,
+                    "message", "Profile Pic Updated",
+                    "url", fileUrl
             ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("UPload failed" + e.getMessage());
+                    .body("Upload failed: " + e.getMessage());
         }
     }
 }
