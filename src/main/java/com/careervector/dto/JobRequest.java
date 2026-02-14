@@ -25,4 +25,8 @@ public class JobRequest {
     @Getter
     @Setter
     private String description;
+    // Add to JobRequest.java
+    @Getter
+    @Setter
+    private int numberOfPostings;
 }

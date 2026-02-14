@@ -1,6 +1,9 @@
 package com.careervector.service;
 
 import com.careervector.dto.JobRequest;
+import com.careervector.dto.fastapi.RankingRequest;
+import com.careervector.dto.fastapi.CandidateInfo;
+import com.careervector.dto.fastapi.RankingResponse;
 import com.careervector.model.Job;
 import com.careervector.model.JobApplication;
 import com.careervector.model.Recruiter;
@@ -11,31 +14,33 @@ import com.careervector.repo.RecruiterRepo;
 import com.careervector.repo.StudentRepo;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class JobService {
 
-    @Autowired
-    private JobRepo jobRepo;
+    @Autowired private JobRepo jobRepo;
     @Autowired private StudentRepo studentRepo;
-    @Autowired
-    private RecruiterRepo recruiterRepo;
+    @Autowired private RecruiterRepo recruiterRepo;
     @Autowired private JobApplicationRepo applicationRepo;
-    @Autowired
-    private EmailService emailService;
+    @Autowired private EmailService emailService;
+    @Autowired private MatchingService matchingService;
+    @Autowired @Qualifier("fastApiRestTemplate") private RestTemplate fastApiRestTemplate;
     // --- 1. POST A NEW JOB ---
     public Job postJob(JobRequest req) {
-        // Find Recruiter by Email
         Recruiter recruiter = recruiterRepo.findByEmail(req.getRecruiterEmail());
-        if(recruiter==null)throw new EntityNotFoundException("Recruiter not found with email: " + req.getRecruiterEmail());
+        if(recruiter==null) throw new EntityNotFoundException("Recruiter not found with email: " + req.getRecruiterEmail());
 
         Job job = Job.builder()
                 .jobTitle(req.getJobTitle())
@@ -44,7 +49,8 @@ public class JobService {
                 .salaryRange(req.getSalaryRange())
                 .description(req.getDescription())
                 .isActive(true)
-                .recruiter(recruiter) // Link the job
+                .recruiter(recruiter)
+                .numberOfPostings(req.getNumberOfPostings())
                 .build();
 
         return jobRepo.save(job);
@@ -52,15 +58,13 @@ public class JobService {
 
     // --- 2. EDIT JOB ---
     public Job updateJob(Long jobId, JobRequest req) {
-        // Verify ownership using the email from request
         Job job = getOwnedJob(jobId, req.getRecruiterEmail());
-
         job.setJobTitle(req.getJobTitle());
         job.setJobType(req.getJobType());
         job.setLocation(req.getLocation());
         job.setSalaryRange(req.getSalaryRange());
         job.setDescription(req.getDescription());
-
+        job.setNumberOfPostings(req.getNumberOfPostings());
         return jobRepo.save(job);
     }
 
@@ -83,45 +87,33 @@ public class JobService {
     }
 
     // --- SECURITY HELPER ---
-    // Fetches job and ensures the requester owns it
     private Job getOwnedJob(Long jobId, String email) {
-        Job job = jobRepo.findById(jobId)
-                .orElseThrow(() -> new EntityNotFoundException("Job not found"));
-
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
         if (!job.getRecruiter().getEmail().equals(email)) {
             throw new RuntimeException("Unauthorized: You do not own this job");
         }
         return job;
     }
 
-
     // --- APPLY FOR JOB ---
     public void applyForJob(Long jobId, String rollNumber) {
-        // 1. Check if application already exists
         if (applicationRepo.existsByJobIdAndStudentRollNumber(jobId, rollNumber)) {
             throw new RuntimeException("You have already applied for this job.");
         }
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
+        Student student = studentRepo.findById(rollNumber).orElseThrow(() -> new EntityNotFoundException("Student not found"));
 
-        // 2. Verify Job and Student exist
-        Job job = jobRepo.findById(jobId)
-                .orElseThrow(() -> new EntityNotFoundException("Job not found"));
-        Student student = studentRepo.findById(rollNumber)
-                .orElseThrow(() -> new EntityNotFoundException("Student not found"));
-
-        // 3. Save application
         JobApplication application = JobApplication.builder()
                 .job(job)
                 .student(student)
                 .status("PENDING")
+                .isMailSent(false)
                 .build();
-
         applicationRepo.save(application);
     }
 
-    @Autowired private MatchingService matchingService;
-
-    // JobService.java
-
+    // --- STUDENT VIEW: SCORED JOBS ---
+    // Updated method in JobService.java
     public List<Map<String, Object>> getJobsWithScores(String rollNumber) {
         Student student = studentRepo.findById(rollNumber)
                 .orElseThrow(() -> new EntityNotFoundException("Student not found"));
@@ -129,27 +121,27 @@ public class JobService {
         return jobRepo.findByIsActive(true).stream().map(job -> {
             Map<String, Object> jobMap = new HashMap<>();
 
-            // 1. Calculate Match Score
             double score = matchingService.calculateMatchScore(student.getSkills(), job.getDescription());
 
-            // 2. Check if student has already applied for this job
-            boolean hasApplied = applicationRepo.existsByJobIdAndStudentRollNumber(job.getId(), rollNumber);
+            // Find existing application to get status and mail flag
+            Optional<JobApplication> appOpt = applicationRepo.findByJobIdAndStudentRollNumber(job.getId(), rollNumber);
 
             jobMap.put("job", job);
             jobMap.put("matchScore", score >= 0 ? Math.round(score) : null);
-            jobMap.put("hasApplied", hasApplied); // Added this field for frontend
+            jobMap.put("hasApplied", appOpt.isPresent());
+            jobMap.put("applicationStatus", appOpt.map(JobApplication::getStatus).orElse(null));
+            jobMap.put("mailSent", appOpt.map(JobApplication::isMailSent).orElse(false)); // Added for UI locking
+
             return jobMap;
         }).collect(Collectors.toList());
     }
-    // JobService.java
 
     public List<JobApplication> getStudentApplications(String rollNumber) {
         return applicationRepo.findByStudentRollNumber(rollNumber);
     }
-    // JobService.java
 
+    // --- RECRUITER VIEW: APPLICANTS ---
     public List<JobApplication> getApplicantsForJob(Long jobId, String email) {
-        // Ensure the recruiter owns the job before showing candidates
         getOwnedJob(jobId, email);
         return applicationRepo.findByJobId(jobId);
     }
@@ -157,6 +149,12 @@ public class JobService {
     public JobApplication updateStatus(Long applicationId, String status) {
         JobApplication app = applicationRepo.findById(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("Application not found"));
+
+        // --- LOCK LOGIC ---
+        if (app.isMailSent()) {
+            throw new RuntimeException("Status is locked because the notification email has already been sent.");
+        }
+
         app.setStatus(status.toUpperCase());
         return applicationRepo.save(app);
     }
@@ -165,10 +163,21 @@ public class JobService {
         return jobRepo.findByIsActive(true);
     }
 
-
-    public void sendApplicationUpdateNotification(Long applicationId) {
+    // --- MAIL LOGIC ---
+    public void sendApplicationUpdateNotification(Long applicationId, String recruiterEmail) {
+        // 1. Fetch Application
         JobApplication app = applicationRepo.findById(applicationId)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Application not found"));
+                .orElseThrow(() -> new EntityNotFoundException("Application not found"));
+
+        // 2. Security Check: Verify recruiter ownership
+        if (!app.getJob().getRecruiter().getEmail().equals(recruiterEmail)) {
+            throw new RuntimeException("Unauthorized: You do not own the job associated with this application.");
+        }
+
+        // 3. Prevent duplicate notifications
+        if (app.isMailSent()) {
+            throw new RuntimeException("Notification has already been sent to this student.");
+        }
 
         String status = app.getStatus();
         String studentEmail = app.getStudent().getEmail();
@@ -176,6 +185,7 @@ public class JobService {
         String jobTitle = app.getJob().getJobTitle();
         String companyName = app.getJob().getRecruiter().getCompanyName();
 
+        // 4. Dispatch Email based on status
         if ("SHORTLISTED".equals(status)) {
             emailService.sendShortlistNotification(studentEmail, studentName, jobTitle, companyName);
         } else if ("REJECTED".equals(status)) {
@@ -183,5 +193,133 @@ public class JobService {
         } else {
             throw new RuntimeException("Notification can only be sent for SHORTLISTED or REJECTED statuses.");
         }
+
+        // 5. Update flag and lock the application
+        app.setMailSent(true);
+        applicationRepo.save(app);
+    }
+
+    // Add to com.careervector.service.JobService
+
+    public void withdrawJobApplication(Long jobId, String rollNumber) {
+        // 1. Find the application
+        JobApplication application = applicationRepo.findByJobIdAndStudentRollNumber(jobId, rollNumber)
+                .orElseThrow(() -> new EntityNotFoundException("Application not found for this job and student."));
+
+        // 2. Logic Check: Block withdrawal if mail is sent or status is not PENDING
+        if (application.isMailSent()) {
+            throw new RuntimeException("Cannot withdraw: Your application has already been processed and a notification has been sent.");
+        }
+
+        if (!"PENDING".equals(application.getStatus())) {
+            throw new RuntimeException("Cannot withdraw: Your application is already " + application.getStatus());
+        }
+
+        // 3. Delete the application
+        applicationRepo.delete(application);
+    }
+
+    //used for ai shortlisting
+    @Value("${fastapi.url}")
+    private String fastApiUrl;
+
+    @Transactional
+    public void autoShortlistCandidates(Long jobId, String recruiterEmail) {
+        // 1. Ownership and Status Check
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
+        if (!job.getRecruiter().getEmail().equals(recruiterEmail)) {
+            throw new RuntimeException("Unauthorized: You do not own this job");
+        }
+        if (job.isActive()) {
+            throw new RuntimeException("Job must be closed first before AI shortlisting.");
+        }
+
+        // 2. Fetch applications to process
+        // FIX: Removed "PENDING" filter to allow AI to generate scores for everyone,
+        // but we still only process if the mail hasn't been sent (locked).
+        List<JobApplication> appsToRank = applicationRepo.findByJobId(jobId).stream()
+                .filter(app -> !app.isMailSent())
+                .toList();
+
+        if (appsToRank.isEmpty()) {
+            System.out.println("No unlocked applications found for Job ID: " + jobId);
+            return;
+        }
+
+        // 3. Prepare Payload for FastAPI
+        List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
+            Student s = app.getStudent();
+            return new CandidateInfo(
+                    s.getEmail(),
+                    s.getResumeUrl(),
+                    s.getGithubUrl(),
+                    extractLeetCodeUsername(s.getLeetcodeUrl())
+            );
+        }).toList();
+
+        RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
+
+        try {
+            // 4. Call FastAPI
+            String url = fastApiUrl + "/rank-candidates-summary";
+            RankingResponse[] response = fastApiRestTemplate.postForObject(url, request, RankingResponse[].class);
+
+            // 5. Update Database based on AI logic
+            if (response != null) {
+                for (RankingResponse res : response) {
+                    // Inside the autoShortlistCandidates loop in JobService.java
+                    applicationRepo.findByJobIdAndStudentEmailIgnoreCase(jobId, res.candidate_id())
+                            .ifPresent(app -> {
+                                // Always update the score
+                                app.setMatchScore(res.final_score());
+
+                                // Update status only if currently PENDING
+                                if ("PENDING".equals(app.getStatus())) {
+                                    String aiStatus = res.status().toLowerCase();
+
+                                    if ("shortlist".equals(aiStatus)) {
+                                        app.setStatus("SHORTLISTED");
+                                    } else if ("reject".equals(aiStatus)) {
+                                        app.setStatus("REJECTED");
+                                    } else if ("review".equals(aiStatus)) {
+                                        // Explicitly set to UNDER_REVIEW
+                                        app.setStatus("UNDER_REVIEW");
+                                    }
+                                }
+                                applicationRepo.save(app);
+                            });
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("AI Ranking Error: " + e.getMessage());
+        }
+    }
+
+    // NEW: Bulk Email Method
+    @Transactional
+    public void sendBulkNotifications(Long jobId, String recruiterEmail) {
+        List<JobApplication> apps = applicationRepo.findByJobId(jobId);
+
+        for (JobApplication app : apps) {
+            // Only send if not already sent and status is not PENDING
+            if (!app.isMailSent() && !"PENDING".equals(app.getStatus())) {
+                try {
+                    // Re-using your existing individual notification logic
+                    sendApplicationUpdateNotification(app.getId(), recruiterEmail);
+                } catch (Exception e) {
+                    System.err.println("Failed to send bulk mail to: " + app.getStudent().getEmail());
+                }
+            }
+        }
+    }
+
+    /**
+     * Extracts username from LeetCode URL.
+     * Handles: https://leetcode.com/u/username/ or https://leetcode.com/username
+     */
+    private String extractLeetCodeUsername(String url) {
+        if (url == null || url.isBlank()) return "unknown";
+        String cleanUrl = url.trim().replaceAll("/$", "");
+        return cleanUrl.substring(cleanUrl.lastIndexOf("/") + 1);
     }
 }

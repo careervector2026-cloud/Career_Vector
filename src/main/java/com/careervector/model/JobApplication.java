@@ -25,4 +25,11 @@ public class JobApplication {
 
     @CreationTimestamp
     private LocalDateTime appliedAt;
+    // In com.careervector.model.JobApplication.java
+
+    // Getters and Setters
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean isMailSent = false;
+    // Add to JobApplication.java
+    private Double matchScore; // Stores the final_score from AI
 }

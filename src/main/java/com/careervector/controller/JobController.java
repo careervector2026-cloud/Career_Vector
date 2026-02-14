@@ -14,28 +14,24 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/jobs")
-@CrossOrigin(origins = "${app.frontend.url}") // Allow React Frontend
+@CrossOrigin(origins = "${app.frontend.url}")
 public class JobController {
 
     @Autowired
     private JobService jobService;
 
-    // POST: Create Job
-    // Payload: { "recruiterEmail": "x@y.com", "jobTitle": "..." }
+    // --- JOB MANAGEMENT ---
+
     @PostMapping("/post-job")
     public ResponseEntity<Job> createJob(@RequestBody JobRequest jobRequest) {
         return ResponseEntity.ok(jobService.postJob(jobRequest));
     }
 
-    // PUT: Update Job
-    // Payload: { "recruiterEmail": "x@y.com", ... }
     @PutMapping("/{jobId}")
     public ResponseEntity<Job> updateJob(@PathVariable Long jobId, @RequestBody JobRequest jobRequest) {
         return ResponseEntity.ok(jobService.updateJob(jobId, jobRequest));
     }
 
-    // PATCH: Toggle Status (Close/Open)
-    // URL: /api/jobs/5/toggle?email=recruiter@example.com
     @PatchMapping("/{jobId}/toggle")
     public ResponseEntity<Job> toggleJobStatus(
             @PathVariable Long jobId,
@@ -43,8 +39,6 @@ public class JobController {
         return ResponseEntity.ok(jobService.toggleJobStatus(jobId, email));
     }
 
-    // DELETE: Delete Job
-    // URL: /api/jobs/5?email=recruiter@example.com
     @DeleteMapping("/{jobId}")
     public ResponseEntity<Void> deleteJob(
             @PathVariable Long jobId,
@@ -54,33 +48,43 @@ public class JobController {
     }
 
     @GetMapping("/get-jobs")
-    public ResponseEntity<List<Job>> getMyJobs(){
+    public ResponseEntity<List<Job>> getAllActiveJobs(){
         return ResponseEntity.ok(jobService.getJobs());
     }
 
-    // PATCH: Update candidate application status
-// URL: /api/jobs/applications/{applicationId}/status?status=SHORTLISTED
+    @GetMapping("/my-jobs")
+    public ResponseEntity<List<Job>> getRecruiterJobs(@RequestParam String email) {
+        return ResponseEntity.ok(jobService.getJobsByRecruiterEmail(email));
+    }
+
+    // --- APPLICATION MANAGEMENT ---
+
+    @GetMapping("/{jobId}/candidates")
+    public ResponseEntity<List<JobApplication>> getJobCandidates(
+            @PathVariable Long jobId,
+            @RequestParam String email) {
+        return ResponseEntity.ok(jobService.getApplicantsForJob(jobId, email));
+    }
+
     @PatchMapping("/applications/{applicationId}/status")
     public ResponseEntity<JobApplication> updateApplicationStatus(
             @PathVariable Long applicationId,
             @RequestParam String status) {
         return ResponseEntity.ok(jobService.updateStatus(applicationId, status));
     }
-    // 1. Fetch all jobs for the recruiter dashboard
-    @GetMapping("/my-jobs")
-    public ResponseEntity<List<Job>> getMyJobs(@RequestParam String email) {
-        return ResponseEntity.ok(jobService.getJobsByRecruiterEmail(email));
-    }
-
-    // JobController.java
 
     @PostMapping("/applications/{applicationId}/notify")
-    public ResponseEntity<Map<String, String>> notifyStudent(@PathVariable Long applicationId) {
-        jobService.sendApplicationUpdateNotification(applicationId);
-        return ResponseEntity.ok(Map.of("message", "Status notification sent successfully via Brevo"));
+    public ResponseEntity<Map<String, String>> notifyStudent(
+            @PathVariable Long applicationId,
+            @RequestParam String email) { // Recruiter email for security/ownership check
+
+        // Corrected call to match Service parameters
+        jobService.sendApplicationUpdateNotification(applicationId, email);
+
+        return ResponseEntity.ok(Map.of("message", "Professional notification sent successfully"));
     }
 
-    // JobController.java
+    // --- DASHBOARD STATS ---
 
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getRecruiterStats(@RequestParam String email) {
@@ -88,7 +92,6 @@ public class JobController {
 
         long activeJobs = myJobs.stream().filter(Job::isActive).count();
 
-        // Fetch all applications for all jobs posted by this recruiter
         List<JobApplication> allApps = myJobs.stream()
                 .flatMap(job -> jobService.getApplicantsForJob(job.getId(), email).stream())
                 .toList();
@@ -102,12 +105,22 @@ public class JobController {
 
         return ResponseEntity.ok(stats);
     }
+    @PostMapping("/{jobId}/auto-shortlist")
+    public ResponseEntity<Map<String, String>> triggerAiShortlisting(
+            @PathVariable Long jobId,
+            @RequestParam String email) { // recruiterEmail for security check
 
-    // 2. Fetch candidates for a specific job ID
-    @GetMapping("/{jobId}/candidates")
-    public ResponseEntity<List<JobApplication>> getJobCandidates(
+        jobService.autoShortlistCandidates(jobId, email);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "AI processing complete. Candidates have been ranked and updated."
+        ));
+    }
+    @PostMapping("/{jobId}/bulk-notify")
+    public ResponseEntity<Map<String, String>> sendBulkEmails(
             @PathVariable Long jobId,
             @RequestParam String email) {
-        return ResponseEntity.ok(jobService.getApplicantsForJob(jobId, email));
+        jobService.sendBulkNotifications(jobId, email);
+        return ResponseEntity.ok(Map.of("message", "Bulk emails dispatched successfully."));
     }
 }

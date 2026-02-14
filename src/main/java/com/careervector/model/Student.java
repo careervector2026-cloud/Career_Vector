@@ -223,4 +223,7 @@ public class Student {
     public void setUserName(String userName) {
         this.userName = userName;
     }
+
+    public String getLeetcodeUrl() {
+     return  this.leetcodeurl;}
 }

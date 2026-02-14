@@ -249,4 +249,13 @@ public class StudentController {
         // This uses the JobApplicationRepo to find records by student roll number
         return ResponseEntity.ok(jobService.getStudentApplications(rollNumber));
     }
+    @DeleteMapping("/withdraw/{jobId}")
+    public ResponseEntity<Map<String, String>> withdrawApplication(
+            @PathVariable Long jobId,
+            @RequestParam String rollNumber) {
+
+        jobService.withdrawJobApplication(jobId, rollNumber);
+
+        return ResponseEntity.ok(Map.of("message", "Application withdrawn successfully"));
+    }
 }
