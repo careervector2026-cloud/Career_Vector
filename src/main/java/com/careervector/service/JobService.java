@@ -71,6 +71,15 @@ public class JobService {
     // --- 3. TOGGLE STATUS (Close/Open) ---
     public Job toggleJobStatus(Long jobId, String email) {
         Job job = getOwnedJob(jobId, email);
+
+        // Check if any notifications have already been dispatched
+        boolean mailsAlreadySent = applicationRepo.findByJobId(jobId).stream()
+                .anyMatch(JobApplication::isMailSent);
+
+        if (mailsAlreadySent) {
+            throw new RuntimeException("Action Blocked: This job is finalized because notifications have already been sent.");
+        }
+
         job.setActive(!job.isActive());
         return jobRepo.save(job);
     }
@@ -225,66 +234,46 @@ public class JobService {
 
     @Transactional
     public void autoShortlistCandidates(Long jobId, String recruiterEmail) {
-        // 1. Ownership and Status Check
         Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
-        if (!job.getRecruiter().getEmail().equals(recruiterEmail)) {
-            throw new RuntimeException("Unauthorized: You do not own this job");
-        }
-        if (job.isActive()) {
-            throw new RuntimeException("Job must be closed first before AI shortlisting.");
+        if (!job.getRecruiter().getEmail().equals(recruiterEmail)) throw new RuntimeException("Unauthorized");
+
+        // Safety Check: Prevent AI ranking if candidates have already been notified
+        boolean alreadyNotified = applicationRepo.findByJobId(jobId).stream()
+                .anyMatch(JobApplication::isMailSent);
+
+        if (alreadyNotified) {
+            throw new RuntimeException("AI Ranking Locked: Notifications have already been dispatched.");
         }
 
-        // 2. Fetch applications to process
-        // FIX: Removed "PENDING" filter to allow AI to generate scores for everyone,
-        // but we still only process if the mail hasn't been sent (locked).
+        if (job.isActive()) throw new RuntimeException("Job must be closed first before AI shortlisting.");
+
         List<JobApplication> appsToRank = applicationRepo.findByJobId(jobId).stream()
                 .filter(app -> !app.isMailSent())
                 .toList();
 
-        if (appsToRank.isEmpty()) {
-            System.out.println("No unlocked applications found for Job ID: " + jobId);
-            return;
-        }
+        if (appsToRank.isEmpty()) return;
 
-        // 3. Prepare Payload for FastAPI
         List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new CandidateInfo(
-                    s.getEmail(),
-                    s.getResumeUrl(),
-                    s.getGithubUrl(),
-                    extractLeetCodeUsername(s.getLeetcodeUrl())
-            );
+            return new CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
         }).toList();
 
         RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
 
         try {
-            // 4. Call FastAPI
             String url = fastApiUrl + "/rank-candidates-summary";
             RankingResponse[] response = fastApiRestTemplate.postForObject(url, request, RankingResponse[].class);
 
-            // 5. Update Database based on AI logic
             if (response != null) {
                 for (RankingResponse res : response) {
-                    // Inside the autoShortlistCandidates loop in JobService.java
                     applicationRepo.findByJobIdAndStudentEmailIgnoreCase(jobId, res.candidate_id())
                             .ifPresent(app -> {
-                                // Always update the score
                                 app.setMatchScore(res.final_score());
-
-                                // Update status only if currently PENDING
                                 if ("PENDING".equals(app.getStatus())) {
                                     String aiStatus = res.status().toLowerCase();
-
-                                    if ("shortlist".equals(aiStatus)) {
-                                        app.setStatus("SHORTLISTED");
-                                    } else if ("reject".equals(aiStatus)) {
-                                        app.setStatus("REJECTED");
-                                    } else if ("review".equals(aiStatus)) {
-                                        // Explicitly set to UNDER_REVIEW
-                                        app.setStatus("UNDER_REVIEW");
-                                    }
+                                    if ("shortlist".equals(aiStatus)) app.setStatus("SHORTLISTED");
+                                    else if ("reject".equals(aiStatus)) app.setStatus("REJECTED");
+                                    else if ("review".equals(aiStatus)) app.setStatus("UNDER_REVIEW");
                                 }
                                 applicationRepo.save(app);
                             });
@@ -294,17 +283,21 @@ public class JobService {
             throw new RuntimeException("AI Ranking Error: " + e.getMessage());
         }
     }
-
     // NEW: Bulk Email Method
     @Transactional
     public void sendBulkNotifications(Long jobId, String recruiterEmail) {
-        List<JobApplication> apps = applicationRepo.findByJobId(jobId);
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
 
+        // Force close job upon finalization
+        if (job.isActive()) {
+            job.setActive(false);
+            jobRepo.save(job);
+        }
+
+        List<JobApplication> apps = applicationRepo.findByJobId(jobId);
         for (JobApplication app : apps) {
-            // Only send if not already sent and status is not PENDING
-            if (!app.isMailSent() && !"PENDING".equals(app.getStatus())) {
+            if (!app.isMailSent() && ("SHORTLISTED".equals(app.getStatus()) || "REJECTED".equals(app.getStatus()))) {
                 try {
-                    // Re-using your existing individual notification logic
                     sendApplicationUpdateNotification(app.getId(), recruiterEmail);
                 } catch (Exception e) {
                     System.err.println("Failed to send bulk mail to: " + app.getStudent().getEmail());
@@ -321,5 +314,92 @@ public class JobService {
         if (url == null || url.isBlank()) return "unknown";
         String cleanUrl = url.trim().replaceAll("/$", "");
         return cleanUrl.substring(cleanUrl.lastIndexOf("/") + 1);
+    }
+
+    // --- MASTER FINALIZE: CLOSE -> AI RANK -> SEND INITIAL MAILS ---
+    @Transactional
+    public void finalizeJobProcess(Long jobId, String recruiterEmail) {
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
+        if (!job.getRecruiter().getEmail().equals(recruiterEmail)) throw new RuntimeException("Unauthorized");
+
+        // 1. Close Job
+        if (job.isActive()) {
+            job.setActive(false);
+            jobRepo.save(job);
+        }
+
+        // 2. AI Shortlist (Checks for isMailSent internally)
+        autoShortlistCandidates(jobId, recruiterEmail);
+
+        // 3. Initial Bulk Notify (Sends to AI-decided Shortlisted/Rejected)
+        sendBulkNotifications(jobId, recruiterEmail);
+    }
+
+    // --- SECONDARY NOTIFY: SEND MAILS TO UPDATED REVIEW CANDIDATES ---
+    @Transactional
+    public void notifyReviewedCandidates(Long jobId, String recruiterEmail) {
+        List<JobApplication> apps = applicationRepo.findByJobId(jobId);
+
+        for (JobApplication app : apps) {
+            // Only send if the recruiter manually updated from UNDER_REVIEW to a final status
+            if (!app.isMailSent() && ("SHORTLISTED".equals(app.getStatus()) || "REJECTED".equals(app.getStatus()))) {
+                try {
+                    sendApplicationUpdateNotification(app.getId(), recruiterEmail);
+                } catch (Exception e) {
+                    System.err.println("Failed to notify reviewed candidate: " + app.getStudent().getEmail());
+                }
+            }
+        }
+    }
+
+    public void shortlistForJobProcess(Long jobId, String email) {
+        Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
+        if (!job.getRecruiter().getEmail().equals(email)) throw new RuntimeException("Unauthorized");
+
+        // Safety Check: Prevent AI ranking if candidates have already been notified
+        boolean alreadyNotified = applicationRepo.findByJobId(jobId).stream()
+                .anyMatch(JobApplication::isMailSent);
+
+        if (alreadyNotified) {
+            throw new RuntimeException("AI Ranking Locked: Notifications have already been dispatched.");
+        }
+
+//        if (job.isActive()) throw new RuntimeException("Job must be closed first before AI shortlisting.");
+
+        List<JobApplication> appsToRank = applicationRepo.findByJobId(jobId).stream()
+                .filter(app -> !app.isMailSent())
+                .toList();
+
+        if (appsToRank.isEmpty()) return;
+
+        List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
+            Student s = app.getStudent();
+            return new CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
+        }).toList();
+
+        RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
+
+        try {
+            String url = fastApiUrl + "/rank-candidates-summary";
+            RankingResponse[] response = fastApiRestTemplate.postForObject(url, request, RankingResponse[].class);
+
+            if (response != null) {
+                for (RankingResponse res : response) {
+                    applicationRepo.findByJobIdAndStudentEmailIgnoreCase(jobId, res.candidate_id())
+                            .ifPresent(app -> {
+                                app.setMatchScore(res.final_score());
+                                if ("PENDING".equals(app.getStatus())) {
+                                    String aiStatus = res.status().toLowerCase();
+                                    if ("shortlist".equals(aiStatus)) app.setStatus("SHORTLISTED");
+                                    else if ("reject".equals(aiStatus)) app.setStatus("REJECTED");
+                                    else if ("review".equals(aiStatus)) app.setStatus("UNDER_REVIEW");
+                                }
+                                applicationRepo.save(app);
+                            });
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("AI Ranking Error: " + e.getMessage());
+        }
     }
 }

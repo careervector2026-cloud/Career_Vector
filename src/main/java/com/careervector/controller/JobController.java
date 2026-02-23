@@ -5,6 +5,7 @@ import com.careervector.model.Job;
 import com.careervector.model.JobApplication;
 import com.careervector.service.JobService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -122,5 +123,22 @@ public class JobController {
             @RequestParam String email) {
         jobService.sendBulkNotifications(jobId, email);
         return ResponseEntity.ok(Map.of("message", "Bulk emails dispatched successfully."));
+    }
+
+    @PostMapping("/{jobId}/finalize")
+    public ResponseEntity<?> finalizeJob(@PathVariable Long jobId, @RequestParam String email) {
+        jobService.finalizeJobProcess(jobId, email);
+        return ResponseEntity.ok("Job finalized successfully.");
+    }
+    @PostMapping("/{jobId}/shortlist")
+    public ResponseEntity<?> shortlistForJob(@PathVariable Long jobId, @RequestParam String email) {
+        jobService.shortlistForJobProcess(jobId, email);
+        return ResponseEntity.ok("Job finalized successfully.");
+    }
+
+    @PostMapping("/{jobId}/notify-reviewed")
+    public ResponseEntity<?> notifyReviewed(@PathVariable Long jobId, @RequestParam String email) {
+        jobService.notifyReviewedCandidates(jobId, email);
+        return ResponseEntity.ok("Review notifications sent.");
     }
 }
