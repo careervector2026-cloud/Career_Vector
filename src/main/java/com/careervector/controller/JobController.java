@@ -1,6 +1,7 @@
 package com.careervector.controller;
 
 import com.careervector.dto.JobRequest;
+import com.careervector.dto.fastapi;
 import com.careervector.model.Job;
 import com.careervector.model.JobApplication;
 import com.careervector.service.JobService;
@@ -131,14 +132,29 @@ public class JobController {
         return ResponseEntity.ok("Job finalized successfully.");
     }
     @PostMapping("/{jobId}/shortlist")
-    public ResponseEntity<?> shortlistForJob(@PathVariable Long jobId, @RequestParam String email) {
-        jobService.shortlistForJobProcess(jobId, email);
-        return ResponseEntity.ok("Job finalized successfully.");
+    public ResponseEntity<List<fastapi.RankingResponse>> shortlistForJob(@PathVariable Long jobId, @RequestParam String email) {
+        // Capture the list returned by the service
+        List<fastapi.RankingResponse> results = jobService.shortlistForJobProcess(jobId, email);
+        // Return the list so the frontend can use it to update the UI state
+        return ResponseEntity.ok(results);
     }
 
     @PostMapping("/{jobId}/notify-reviewed")
     public ResponseEntity<?> notifyReviewed(@PathVariable Long jobId, @RequestParam String email) {
         jobService.notifyReviewedCandidates(jobId, email);
         return ResponseEntity.ok("Review notifications sent.");
+    }
+    @PostMapping("/skill-gap-report")
+    public ResponseEntity<fastapi.SkillGapReportResponse> getSkillGapReport(
+            @RequestBody fastapi.SkillGapReportRequest request) {
+        return ResponseEntity.ok(jobService.getSkillGapReport(request));
+    }
+    // JobController.java
+
+    @PostMapping("/learning-path") // This combines with @RequestMapping("/api/jobs")
+    public ResponseEntity<fastapi.LearningPathResponse> getLearningPath(
+            @RequestBody fastapi.LearningPathRequest request) {
+
+        return ResponseEntity.ok(jobService.generateLearningPath(request));
     }
 }

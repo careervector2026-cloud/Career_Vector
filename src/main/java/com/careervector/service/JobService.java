@@ -1,6 +1,7 @@
 package com.careervector.service;
 
 import com.careervector.dto.JobRequest;
+import com.careervector.dto.fastapi;
 import com.careervector.dto.fastapi.RankingRequest;
 import com.careervector.dto.fastapi.CandidateInfo;
 import com.careervector.dto.fastapi.RankingResponse;
@@ -20,10 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -352,54 +350,126 @@ public class JobService {
         }
     }
 
-    public void shortlistForJobProcess(Long jobId, String email) {
+    // No changes strictly required here if you've already implemented the
+// shortlistForJobProcess that returns List<fastapi.RankingResponse>.
+// Just ensuring it remains stateless as per your requirement.
+    public List<fastapi.RankingResponse> shortlistForJobProcess(Long jobId, String email) {
         Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
         if (!job.getRecruiter().getEmail().equals(email)) throw new RuntimeException("Unauthorized");
-
-        // Safety Check: Prevent AI ranking if candidates have already been notified
-        boolean alreadyNotified = applicationRepo.findByJobId(jobId).stream()
-                .anyMatch(JobApplication::isMailSent);
-
-        if (alreadyNotified) {
-            throw new RuntimeException("AI Ranking Locked: Notifications have already been dispatched.");
-        }
-
-//        if (job.isActive()) throw new RuntimeException("Job must be closed first before AI shortlisting.");
 
         List<JobApplication> appsToRank = applicationRepo.findByJobId(jobId).stream()
                 .filter(app -> !app.isMailSent())
                 .toList();
 
-        if (appsToRank.isEmpty()) return;
+        if (appsToRank.isEmpty()) return Collections.emptyList();
 
-        List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
+        List<fastapi.CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
+            return new fastapi.CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
         }).toList();
 
-        RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
+        fastapi.RankingRequest request = new fastapi.RankingRequest(job.getDescription(), candidateInfos);
 
         try {
             String url = fastApiUrl + "/rank-candidates-summary";
-            RankingResponse[] response = fastApiRestTemplate.postForObject(url, request, RankingResponse[].class);
-
-            if (response != null) {
-                for (RankingResponse res : response) {
-                    applicationRepo.findByJobIdAndStudentEmailIgnoreCase(jobId, res.candidate_id())
-                            .ifPresent(app -> {
-                                app.setMatchScore(res.final_score());
-                                if ("PENDING".equals(app.getStatus())) {
-                                    String aiStatus = res.status().toLowerCase();
-                                    if ("shortlist".equals(aiStatus)) app.setStatus("SHORTLISTED");
-                                    else if ("reject".equals(aiStatus)) app.setStatus("REJECTED");
-                                    else if ("review".equals(aiStatus)) app.setStatus("UNDER_REVIEW");
-                                }
-                                applicationRepo.save(app);
-                            });
-                }
-            }
+            fastapi.RankingResponse[] response = fastApiRestTemplate.postForObject(url, request, fastapi.RankingResponse[].class);
+            return response != null ? Arrays.asList(response) : Collections.emptyList();
         } catch (Exception e) {
             throw new RuntimeException("AI Ranking Error: " + e.getMessage());
         }
+    }
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getJobsWithAiScoring(String rollNumber) {
+        // 1. Fetch Student from DB
+        Student student = studentRepo.findById(rollNumber)
+                .orElseThrow(() -> new EntityNotFoundException("Student not found"));
+
+        // 2. Fetch all Active Jobs from DB
+        List<Job> activeJobs = jobRepo.findByIsActive(true);
+        if (activeJobs.isEmpty()) return List.of();
+
+        // 3. Prepare AI Request Payload using your FastAPI DTO wrapper
+        fastapi.StudentProfile profile = new fastapi.StudentProfile(
+                student.getEmail(),
+                student.getResumeUrl(),
+                student.getGithubUrl(),
+                extractLeetCodeUsername(student.getLeetcodeUrl())
+        );
+
+        List<fastapi.JobDescriptionInfo> jdList = activeJobs.stream()
+                .map(job -> new fastapi.JobDescriptionInfo(
+                        String.valueOf(job.getId()),
+                        job.getDescription()
+                ))
+                .toList();
+
+        fastapi.StudentMatchRequest aiRequest = new fastapi.StudentMatchRequest(profile, jdList);
+
+        try {
+            // 4. Call FastAPI (Method: POST, Endpoint: /match-student-jds?mode=lite)
+            String url = fastApiUrl + "/match-student-jds?mode=lite";
+            fastapi.StudentMatchResponse[] aiResults = fastApiRestTemplate.postForObject(
+                    url,
+                    aiRequest,
+                    fastapi.StudentMatchResponse[].class
+            );
+
+            // Map AI results by Job ID for efficient lookups
+            Map<String, fastapi.StudentMatchResponse> aiMap = new HashMap<>();
+            if (aiResults != null) {
+                for (fastapi.StudentMatchResponse res : aiResults) {
+                    aiMap.put(res.jd_id(), res);
+                }
+            }
+
+            // 5. Build final response: Combine Job Entity + AI Scores + Application Status
+            return activeJobs.stream().map(job -> {
+                        Map<String, Object> responseMap = new HashMap<>();
+                        fastapi.StudentMatchResponse aiData = aiMap.get(String.valueOf(job.getId()));
+
+                        // Check if the student has already applied to this job
+                        Optional<JobApplication> appOpt = applicationRepo.findByJobIdAndStudentRollNumber(job.getId(), rollNumber);
+
+                        responseMap.put("job", job);
+                        responseMap.put("aiStats", aiData); // Includes score, rank, reason, role_level, etc.
+                        responseMap.put("hasApplied", appOpt.isPresent());
+                        responseMap.put("applicationStatus", appOpt.map(JobApplication::getStatus).orElse(null));
+                        responseMap.put("mailSent", appOpt.map(JobApplication::isMailSent).orElse(false));
+
+                        return responseMap;
+                    })
+                    .sorted((a, b) -> {
+                        // Sort by Rank provided by AI (Rank 1 at the top)
+                        fastapi.StudentMatchResponse resA = (fastapi.StudentMatchResponse) a.get("aiStats");
+                        fastapi.StudentMatchResponse resB = (fastapi.StudentMatchResponse) b.get("aiStats");
+                        if (resA == null || resB == null) return 0;
+                        return Integer.compare(resA.rank(), resB.rank());
+                    })
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            // Log error and fallback: You might want to return jobs without scores if AI is down
+            System.err.println("AI Scoring Error: " + e.getMessage());
+            throw new RuntimeException("Could not fetch AI job recommendations. Please try again later.");
+        }
+    }
+
+    public fastapi.SkillGapReportResponse getSkillGapReport(fastapi.SkillGapReportRequest request) {
+        try {
+            // Updated endpoint to match your FastAPI route for detailed reports
+            String url = fastApiUrl + "/skill-gap-report";
+
+            return fastApiRestTemplate.postForObject(
+                    url,
+                    request,
+                    fastapi.SkillGapReportResponse.class
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("AI Skill Gap Report Error: " + e.getMessage());
+        }
+    }
+    public fastapi.LearningPathResponse generateLearningPath(fastapi.LearningPathRequest request) {
+        String url = fastApiUrl + "/learning-path"; // Match your FastAPI endpoint
+        return fastApiRestTemplate.postForObject(url, request, fastapi.LearningPathResponse.class);
     }
 }

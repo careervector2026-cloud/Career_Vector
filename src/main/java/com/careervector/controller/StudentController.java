@@ -159,7 +159,7 @@ public class StudentController {
     @GetMapping("/{rollNumber}/get-scored-jobs")
     public ResponseEntity<List<Map<String, Object>>> getScoredJobs(@PathVariable String rollNumber) {
         // Calls the service method that handles null scores if skills are missing
-        return ResponseEntity.ok(jobService.getJobsWithScores(rollNumber));
+        return ResponseEntity.ok(jobService.getJobsWithAiScoring(rollNumber));
     }
 
     @PatchMapping("/profile")
