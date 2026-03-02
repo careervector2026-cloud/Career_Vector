@@ -38,6 +38,9 @@ public class Student {
     private String resumeUrl;
     private String leetcodeurl;
     private String githubUrl;
+    @Getter
+    @Setter
+    private String clgName;
     private boolean verified;
 
     public boolean isVerified() {

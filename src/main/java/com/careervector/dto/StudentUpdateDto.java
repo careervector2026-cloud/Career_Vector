@@ -1,6 +1,8 @@
 package com.careervector.dto;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 @Data
 public class StudentUpdateDto {
@@ -11,7 +13,9 @@ public class StudentUpdateDto {
     private String leetcodeUrl;
     private String hackerrankUrl;
     private String codechefUrl;
-
+    @Getter
+    @Setter
+    private String clgName;
     private Double gpa_sem_1;
     private Double gpa_sem_2;
     private Double gpa_sem_3;
@@ -20,7 +24,7 @@ public class StudentUpdateDto {
     private Double gpa_sem_6;
     private Double gpa_sem_7;
     private Double gpa_sem_8;
-
+    
     public String getEmail() {
         return email;
     }

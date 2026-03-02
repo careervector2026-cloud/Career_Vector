@@ -184,7 +184,7 @@ public class StudentService {
         if(dto.getMobileNumber()!=null) student.setMobileNumber(dto.getMobileNumber());
         if(dto.getGithubUrl()!=null) student.setGithubUrl(dto.getGithubUrl());
         if(dto.getLeetcodeUrl()!=null) student.setLeetcodeurl(dto.getLeetcodeUrl());
-
+        if(dto.getClgName()!=null)student.setClgName(dto.getClgName());
         if(dto.getGpa_sem_1()!=null) student.setGpaSem1(dto.getGpa_sem_1());
         if(dto.getGpa_sem_2()!=null) student.setGpaSem2(dto.getGpa_sem_2());
         if(dto.getGpa_sem_3()!=null) student.setGpaSem3(dto.getGpa_sem_3());
