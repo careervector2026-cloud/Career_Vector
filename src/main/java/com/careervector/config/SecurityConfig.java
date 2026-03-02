@@ -36,7 +36,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/student/**").permitAll() // Public endpoints
                         .requestMatchers("/api/recruiter/**").permitAll() // Public endpoints
-                        .requestMatchers("/api/admins/**").permitAll()
+                        .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/jobs/**").permitAll()// Public endpoints
                         .anyRequest().authenticated()
                 );

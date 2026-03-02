@@ -1,7 +1,13 @@
-
 # --- Maven & Build Results ---
 target/
+*.class
+*.jar
+*.war
+*.ear
 *.log
+*.zip
+*.tar.gz
+*.rar
 *.gz
 
 # --- Maven Wrapper ---
@@ -13,13 +19,14 @@ target/
 # Never push your database passwords or API keys
 .env
 .env.local
+.env.*.local
 secret.properties
 
 # --- Java Crash Logs ---
 hs_err_pid*
 replay_pid*
 
-# --- IDE: IntelliJ IDEA ---
+# --- IDE: IntelliJ IDEA (Leftovers) ---
 .idea/
 *.iws
 *.iml
@@ -28,9 +35,9 @@ out/
 
 # --- IDE: VS Code ---
 .vscode/
-bin/
 
-# --- IDE: Eclipse / STS ---
+# --- IDE: Eclipse / Spring Tool Suite (STS) ---
+.metadata/
 .apt_generated
 .classpath
 .factorypath
@@ -38,6 +45,8 @@ bin/
 .settings
 .springBeans
 .sts4-cache
+bin/
+tmp/
 
 # --- IDE: NetBeans ---
 /nbproject/private/
