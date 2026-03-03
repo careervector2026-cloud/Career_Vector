@@ -157,4 +157,27 @@ public class JobController {
 
         return ResponseEntity.ok(jobService.generateLearningPath(request));
     }
+    
+    @PostMapping("/job-readiness")
+    public ResponseEntity<?> getJobReadiness(@RequestBody Map<String, Object> payload) {
+        // This receives: resume_url, job_description, github_url, leetcode_username
+        try {
+            Object result = jobService.fetchJobReadiness(payload);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body(Map.of("error", e.getMessage()));
+        }
+    }
+    @PostMapping("/failure-diagnosis")
+    public ResponseEntity<?> getFailureDiagnosis(@RequestBody Map<String, Object> payload) {
+        try {
+            // payload contains resume_url, job_description, github_url, leetcode_username
+            Object result = jobService.fetchFailureDiagnosis(payload);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body(Map.of("error", e.getMessage()));
+        }
+    }
 }

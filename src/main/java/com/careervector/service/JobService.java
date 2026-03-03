@@ -472,4 +472,31 @@ public class JobService {
         String url = fastApiUrl + "/learning-path"; // Match your FastAPI endpoint
         return fastApiRestTemplate.postForObject(url, request, fastapi.LearningPathResponse.class);
     }
+    
+ // Inside JobService.java
+
+    public Object fetchJobReadiness(Map<String, Object> payload) {
+        // 1. Use the configured fastApiUrl from application.properties
+        // 2. Use the @Qualifier("fastApiRestTemplate") bean already defined in your class
+        String url = fastApiUrl + "/job-readiness"; 
+        
+        try {
+            // We use Object.class or a specific DTO to capture the FastAPI response
+            return fastApiRestTemplate.postForObject(url, payload, Object.class);
+        } catch (Exception e) {
+            throw new RuntimeException("AI Analysis Service (FastAPI) is currently unreachable: " + e.getMessage());
+        }
+    }
+ // Logic for Failure Diagnosis
+    public Object fetchFailureDiagnosis(Map<String, Object> payload) {
+        // Construct the FastAPI endpoint URL
+        String url = fastApiUrl + "/failure-diagnosis"; 
+        
+        try {
+            // Proxy the request to FastAPI using the specialized RestTemplate
+            return fastApiRestTemplate.postForObject(url, payload, Object.class);
+        } catch (Exception e) {
+            throw new RuntimeException("AI Diagnosis Service (FastAPI) is currently unreachable: " + e.getMessage());
+        }
+    }
 }
