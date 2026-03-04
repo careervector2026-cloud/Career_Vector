@@ -1,9 +1,11 @@
 package com.careervector.controller;
 
+import com.careervector.dto.InterviewResponseDTO;
 import com.careervector.dto.LoginData;
 import com.careervector.dto.StudentUpdateDto;
 import com.careervector.model.JobApplication;
 import com.careervector.model.Student;
+import com.careervector.service.InterviewService;
 import com.careervector.service.JobService;
 import com.careervector.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +29,9 @@ public class StudentController {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private JobService jobService;
-
+    @Autowired
+    private InterviewService interviewService;
+    
     // --- 1. SEND OTP (For SIGNUP) ---
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String,String> payload){
@@ -257,5 +261,9 @@ public class StudentController {
         jobService.withdrawJobApplication(jobId, rollNumber);
 
         return ResponseEntity.ok(Map.of("message", "Application withdrawn successfully"));
+    }
+    @GetMapping("/my-interviews")
+    public ResponseEntity<List<InterviewResponseDTO>> getMyInterviews(@RequestParam String email) {
+        return ResponseEntity.ok(interviewService.getInterviewsForStudent(email));
     }
 }

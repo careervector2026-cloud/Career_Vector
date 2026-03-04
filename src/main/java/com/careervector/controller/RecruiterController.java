@@ -1,8 +1,11 @@
 package com.careervector.controller;
 
+import com.careervector.dto.InterviewBulkRequest;
+import com.careervector.dto.InterviewResponseDTO;
 import com.careervector.dto.LoginData;
 import com.careervector.dto.RecruiterUpdateDto;
 import com.careervector.model.Recruiter;
+import com.careervector.service.InterviewService;
 import com.careervector.service.RecruiterService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -10,6 +13,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -22,6 +27,10 @@ public class RecruiterController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired 
+    private InterviewService interviewService;
+
 
     // --- 1. SIGNUP & OTP ---
 
@@ -175,5 +184,20 @@ public class RecruiterController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Upload failed: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/schedule-bulk")
+    public ResponseEntity<?> scheduleBulkInterviews(@RequestBody InterviewBulkRequest request) {
+        try {
+            interviewService.processBulkInterviews(request);
+            return ResponseEntity.ok("Interviews scheduled and candidates notified.");
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
+        }
+    }
+    @GetMapping("/my-interviews")
+    public ResponseEntity<List<InterviewResponseDTO>> getRecruiterInterviews(@RequestParam String email) {
+        // Fetches all interviews where the job poster's email matches
+        return ResponseEntity.ok(interviewService.getInterviewsForRecruiter(email));
     }
 }

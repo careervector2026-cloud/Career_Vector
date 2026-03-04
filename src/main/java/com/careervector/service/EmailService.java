@@ -97,4 +97,18 @@ public class EmailService {
             throw new RuntimeException("Email Service Failed: " + e.getMessage());
         }
     }
+    public void sendInterviewInvitation(String toEmail, String studentName, String jobTitle, String date, String time, String link) {
+        String subject = "Interview Invitation: " + jobTitle;
+        String bodyContent = "Hi " + studentName + ",\n\n" +
+                "We are pleased to invite you for an interview for the " + jobTitle + " position.\n\n" +
+                "Details are as follows:\n" +
+                "Date: " + date + "\n" +
+                "Time: " + time + "\n" +
+                "Meeting Link: " + link + "\n\n" +
+                "Please ensure you join on time. We look forward to speaking with you.\n\n" +
+                "Best regards,\n" +
+                "CareerVector Recruitment Team";
+
+        this.sendEmail(toEmail, subject, bodyContent);
+    }
 }
