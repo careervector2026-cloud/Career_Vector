@@ -4,15 +4,24 @@ import com.careervector.dto.InterviewResponseDTO;
 import com.careervector.dto.LoginData;
 import com.careervector.dto.StudentUpdateDto;
 import com.careervector.model.JobApplication;
+import com.careervector.model.MockInterview;
 import com.careervector.model.Student;
+import com.careervector.repo.MockInterviewRepo;
 import com.careervector.service.InterviewService;
 import com.careervector.service.JobService;
 import com.careervector.service.StudentService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -266,4 +275,99 @@ public class StudentController {
     public ResponseEntity<List<InterviewResponseDTO>> getMyInterviews(@RequestParam String email) {
         return ResponseEntity.ok(interviewService.getInterviewsForStudent(email));
     }
+    @Value("${fastapi.url}")
+    private String fastApiUrl;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @PostMapping("/simulation/generate-questions")
+    public ResponseEntity<?> generateSimulationQuestions(@RequestBody Map<String, Object> payload) {
+        try {
+            String email = (String) payload.get("email");
+            Integer nQuestions = (Integer) payload.get("n_questions");
+            String jdText = (String) payload.get("jd_text");
+
+            // Fetch student details from DB to get the latest Resume/GitHub URLs
+            Student student = studentService.findStudent(email);
+            if (student == null) return ResponseEntity.badRequest().body("Student not found");
+
+            // Prepare payload for FastAPI
+            Map<String, Object> aiPayload = Map.of(
+                "jd_text", jdText != null ? jdText : "General Software Engineering Role",
+                "resume_url", student.getResumeUrl() != null ? student.getResumeUrl() : "",
+                "github_url", student.getGithubUrl() != null ? student.getGithubUrl() : "",
+                "n_questions", nQuestions != null ? nQuestions : 4
+            );
+
+            return restTemplate.postForEntity(fastApiUrl + "/generate-interview-questions", aiPayload, Object.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("AI Generation Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/simulation/evaluate")
+    public ResponseEntity<?> evaluateSimulation(@RequestBody Map<String, Object> payload) {
+        try {
+            // payload should contain "answers" list as per FastAPI spec
+            return restTemplate.postForEntity(fastApiUrl + "/evaluate-interview", payload, Object.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("AI Evaluation Error: " + e.getMessage());
+        }
+    }
+    @PostMapping("/simulation/start-adaptive")
+    public ResponseEntity<?> startAdaptive(@RequestBody Map<String, Object> payload) {
+        try {
+            Student student = studentService.findStudent((String) payload.get("email"));
+            Map<String, Object> aiPayload = Map.of(
+                "jd_text", payload.get("jd_text"),
+                "candidate_id", student.getEmail(),
+                "resume_url", student.getResumeUrl(),
+                "github_url", student.getGithubUrl(),
+                "n_questions", payload.get("n_questions")
+            );
+            return restTemplate.postForEntity(fastApiUrl + "/start-adaptive-interview", aiPayload, Object.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Error starting adaptive: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/simulation/adaptive-answer")
+    public ResponseEntity<?> adaptiveAnswer(@RequestBody Map<String, Object> payload) {
+        try {
+            // payload contains candidate_id and answer
+            return restTemplate.postForEntity(fastApiUrl + "/adaptive-interview-answer", payload, Object.class);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Evaluation error: " + e.getMessage());
+        }
+    }
+    
+    @Autowired
+    private MockInterviewRepo mockInterviewRepo;
+
+    // Save a completed simulation session
+    @PostMapping("/simulation/save-history")
+    public ResponseEntity<?> saveMockHistory(@RequestBody Map<String, Object> payload) {
+        try {
+            MockInterview mock = new MockInterview();
+            mock.setStudentEmail((String) payload.get("email"));
+            mock.setOverallScore(Double.parseDouble(payload.get("score").toString()));
+            mock.setJdSummary((String) payload.get("jd"));
+            
+            // Convert the details list to a JSON string
+            ObjectMapper mapper = new ObjectMapper();
+            String jsonDetails = mapper.writeValueAsString(payload.get("details"));
+            mock.setInterviewDetailsJson(jsonDetails);
+
+            return ResponseEntity.ok(mockInterviewRepo.save(mock));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to save history: " + e.getMessage());
+        }
+    }
+
+    // Get all mock history for a student
+    @GetMapping("/simulation/history")
+    public ResponseEntity<List<MockInterview>> getMockHistory(@RequestParam String email) {
+        return ResponseEntity.ok(mockInterviewRepo.findByStudentEmailOrderByCreatedAtDesc(email));
+    }
+    
 }

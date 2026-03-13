@@ -499,4 +499,15 @@ public class JobService {
             throw new RuntimeException("AI Diagnosis Service (FastAPI) is currently unreachable: " + e.getMessage());
         }
     }
+    public Object fetchAtsScore(Map<String, Object> payload) {
+        // Construct the FastAPI endpoint URL for ATS Check
+        String url = fastApiUrl + "/ats-check"; 
+        
+        try {
+            // Proxy the request to FastAPI using the specialized RestTemplate
+            return fastApiRestTemplate.postForObject(url, payload, Object.class);
+        } catch (Exception e) {
+            throw new RuntimeException("AI ATS Service (Scanner) is currently unreachable: " + e.getMessage());
+        }
+    }
 }

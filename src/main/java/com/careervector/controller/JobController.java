@@ -6,7 +6,10 @@ import com.careervector.model.Job;
 import com.careervector.model.JobApplication;
 import com.careervector.service.JobService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -174,6 +177,17 @@ public class JobController {
         try {
             // payload contains resume_url, job_description, github_url, leetcode_username
             Object result = jobService.fetchFailureDiagnosis(payload);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body(Map.of("error", e.getMessage()));
+        }
+    }
+    @PostMapping("/ats-score")
+    public ResponseEntity<?> getAtsScore(@RequestBody Map<String, Object> payload) {
+        try {
+            // payload receives: resume_url, job_description
+            Object result = jobService.fetchAtsScore(payload);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
