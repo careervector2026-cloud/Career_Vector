@@ -1,3 +1,4 @@
+//JobService.java
 package com.careervector.service;
 
 import com.careervector.dto.JobRequest;
@@ -253,7 +254,7 @@ public class JobService {
 
         List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
+            return new CandidateInfo(s.getRollNumber(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()),s.getClgName());
         }).toList();
 
         RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
@@ -365,7 +366,7 @@ public class JobService {
 
         List<fastapi.CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new fastapi.CandidateInfo(s.getEmail(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()));
+            return new fastapi.CandidateInfo(s.getRollNumber(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()),s.getClgName());
         }).toList();
 
         fastapi.RankingRequest request = new fastapi.RankingRequest(job.getDescription(), candidateInfos);
@@ -390,10 +391,11 @@ public class JobService {
 
         // 3. Prepare AI Request Payload using your FastAPI DTO wrapper
         fastapi.StudentProfile profile = new fastapi.StudentProfile(
-                student.getEmail(),
+                student.getRollNumber(),
                 student.getResumeUrl(),
                 student.getGithubUrl(),
-                extractLeetCodeUsername(student.getLeetcodeUrl())
+                extractLeetCodeUsername(student.getLeetcodeUrl()),
+                student.getClgName()
         );
 
         List<fastapi.JobDescriptionInfo> jdList = activeJobs.stream()

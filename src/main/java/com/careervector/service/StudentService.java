@@ -1,3 +1,4 @@
+//StudentService.java
 package com.careervector.service;
 
 import com.careervector.dto.StudentUpdateDto;
@@ -67,7 +68,7 @@ public class StudentService {
     public Student save(String rollNumber, String fullName, String email, String password, String userName,
                         String dept, String branch, String mobileNumber, String semester, String year,
                         MultipartFile image, MultipartFile resume, String semesterGPAsJson,
-                        String leetCodeUrl, String githubUrl) {
+                        String leetCodeUrl, String githubUrl,String clgName) {
         Student s = new Student();
         s.setRollNumber(rollNumber);
         s.setFullName(fullName);
@@ -80,6 +81,7 @@ public class StudentService {
         s.setLeetcodeurl(leetCodeUrl);
         s.setGithubUrl(githubUrl);
         s.setVerified(true);
+        s.setClgName(clgName);
 
         try {
             if (semester == null || semester.trim().isEmpty()) throw new NumberFormatException("Semester is missing");

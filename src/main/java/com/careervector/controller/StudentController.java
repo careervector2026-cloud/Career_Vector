@@ -1,3 +1,4 @@
+//StudentController.java
 package com.careervector.controller;
 
 import com.careervector.dto.InterviewResponseDTO;
@@ -119,7 +120,8 @@ public class StudentController {
             @RequestParam(value = "resume", required = false) MultipartFile resume,
             @RequestParam(value = "semesterGPAs", required = false) String semesterGPAsJson,
             @RequestParam(value = "leetcode", required = false) String leetCodeUrl,
-            @RequestParam(value = "github", required = false) String githubUrl
+            @RequestParam(value = "github", required = false) String githubUrl,
+            @RequestParam(value = "college",required=true) String clgName
     ) {
         try {
             email = email.trim();
@@ -134,7 +136,7 @@ public class StudentController {
                     rollNumber, fullName, email, password, userName, dept, branch,
                     mobileNumber, semester, year, image, resume,
                     semesterGPAsJson,
-                    leetCodeUrl, githubUrl
+                    leetCodeUrl, githubUrl,clgName
             );
             return new ResponseEntity<>(saved, HttpStatus.CREATED);
 

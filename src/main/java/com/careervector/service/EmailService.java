@@ -55,46 +55,43 @@ public class EmailService {
      * Core method to send an email using the Brevo HTTP API (Port 443).
      * This bypasses SMTP ports (587/465) which are often blocked on cloud hosting.
      */
+ // EmailService.java
+
     public void sendEmail(String toEmail, String subject, String bodyContent) {
         try {
-            // 1. Headers
+            // 1. Ensure the key is trimmed of any hidden newlines/spaces
+            String cleanKey = brevoApiKey.trim();
+
             HttpHeaders headers = new HttpHeaders();
+            headers.set("api-key", cleanKey); // Brevo v3 Requirement
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("api-key", brevoApiKey);
-            headers.set("accept", "application/json");
+            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
-            // 2. Body Payload
-            Map<String, Object> body = new HashMap<>();
+            // 2. Build the payload
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("sender", Map.of("name", "CareerVector", "email", "careervector2026@gmail.com"));
+            payload.put("to", List.of(Map.of("email", toEmail)));
+            payload.put("subject", subject);
+            payload.put("textContent", bodyContent);
 
-            // Sender (MUST be the email you verified in Brevo)
-            Map<String, String> sender = new HashMap<>();
-            sender.put("name", "CareerVector");
-            sender.put("email", "careervector2026@gmail.com");
-            body.put("sender", sender);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
 
-            // Recipient
-            Map<String, String> to = new HashMap<>();
-            to.put("email", toEmail);
-            body.put("to", List.of(to));
-
-            // Content
-            body.put("subject", subject);
-            body.put("textContent", bodyContent);
-
-            // 3. Send Request
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(BREVO_API_URL, request, String.class);
+            System.out.println("DEBUG: Attempting to send email to " + toEmail);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(BREVO_API_URL, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("DEBUG: Email sent successfully via Brevo API to " + toEmail);
-            } else {
-                System.err.println("DEBUG: Brevo API Error: " + response.getBody());
-                throw new RuntimeException("Failed to send email. Provider rejected the request.");
+                System.out.println("DEBUG: Success! Brevo accepted the email.");
             }
 
+        } catch (org.springframework.web.client.HttpClientErrorException.Unauthorized e) {
+            // If this hits, the key is 100% being rejected by their server
+            System.err.println("DEBUG: 401 Unauthorized. Key Used: " + brevoApiKey.substring(0, 10) + "...");
+            System.err.println("Full Error from Brevo: " + e.getResponseBodyAsString());
+            throw new RuntimeException("Invalid Brevo API Key or IP restricted.");
         } catch (Exception e) {
-            System.err.println("DEBUG: Email Exception: " + e.getMessage());
-            throw new RuntimeException("Email Service Failed: " + e.getMessage());
+            System.err.println("DEBUG: General Error: " + e.getMessage());
+            throw new RuntimeException("Email failed: " + e.getMessage());
         }
     }
     public void sendInterviewInvitation(String toEmail, String studentName, String jobTitle, String date, String time, String link) {

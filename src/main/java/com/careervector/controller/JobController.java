@@ -1,3 +1,4 @@
+// JobController.java
 package com.careervector.controller;
 
 import com.careervector.dto.JobRequest;
@@ -152,7 +153,7 @@ public class JobController {
             @RequestBody fastapi.SkillGapReportRequest request) {
         return ResponseEntity.ok(jobService.getSkillGapReport(request));
     }
-    // JobController.java
+
 
     @PostMapping("/learning-path") // This combines with @RequestMapping("/api/jobs")
     public ResponseEntity<fastapi.LearningPathResponse> getLearningPath(

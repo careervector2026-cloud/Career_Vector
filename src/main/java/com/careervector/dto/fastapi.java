@@ -9,10 +9,11 @@ public class fastapi {
     ) {}
     // Candidate Details
     public record CandidateInfo(
-            String candidate_id,
+            String student_id,
             String resume_url,
             String github_url,
-            String leetcode_username
+            String leetcode_username,
+            String college_name
     ) {}
     // Response Object
     public record RankingResponse(
@@ -30,10 +31,11 @@ public class fastapi {
     ) {}
 
     public record StudentProfile(
-            String student_id,
+    		String student_id,
             String resume_url,
             String github_url,
-            String leetcode_username
+            String leetcode_username,
+            String college_name
     ) {}
 
     public record JobDescriptionInfo(
