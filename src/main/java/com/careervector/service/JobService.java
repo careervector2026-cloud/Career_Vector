@@ -158,12 +158,25 @@ public class JobService {
         JobApplication app = applicationRepo.findById(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("Application not found"));
 
-        // --- LOCK LOGIC ---
+        String newStatus = status.toUpperCase();
+
+        // --- UPDATED LOCK LOGIC ---
+        // If a mail was already sent (e.g., the Shortlist/Interview invite), 
+        // we ONLY allow updates if the recruiter is now selecting (Hiring) or rejecting (Passing) the candidate.
         if (app.isMailSent()) {
-            throw new RuntimeException("Status is locked because the notification email has already been sent.");
+            boolean isFinalDecision = newStatus.equals("SELECTED") || newStatus.equals("REJECTED");
+            
+            if (!isFinalDecision) {
+                throw new RuntimeException("Status is locked because the notification email has already been sent.");
+            }
+
+            // IMPORTANT: We temporarily reset the mail flag to 'false'.
+            // This allows the Controller/Service to trigger the FINAL email (Hire/Reject) 
+            // through the notify endpoint without getting blocked by the 'already sent' check.
+            app.setMailSent(false);
         }
 
-        app.setStatus(status.toUpperCase());
+        app.setStatus(newStatus);
         return applicationRepo.save(app);
     }
 
@@ -194,7 +207,11 @@ public class JobService {
         String companyName = app.getJob().getRecruiter().getCompanyName();
 
         // 4. Dispatch Email based on status
-        if ("SHORTLISTED".equals(status)) {
+        if ("SELECTED".equals(status)) {
+            // You'll need to add this method in your EmailService.java
+            emailService.sendSelectionNotification(studentEmail, studentName, jobTitle, companyName);
+        }
+        else if ("SHORTLISTED".equals(status)) {
             emailService.sendShortlistNotification(studentEmail, studentName, jobTitle, companyName);
         } else if ("REJECTED".equals(status)) {
             emailService.sendRejectionNotification(studentEmail, studentName, jobTitle, companyName);
@@ -236,7 +253,7 @@ public class JobService {
         Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
         if (!job.getRecruiter().getEmail().equals(recruiterEmail)) throw new RuntimeException("Unauthorized");
 
-        // Safety Check: Prevent AI ranking if candidates have already been notified
+        // 1. Safety Check: Prevent AI ranking if candidates have already been notified
         boolean alreadyNotified = applicationRepo.findByJobId(jobId).stream()
                 .anyMatch(JobApplication::isMailSent);
 
@@ -246,15 +263,23 @@ public class JobService {
 
         if (job.isActive()) throw new RuntimeException("Job must be closed first before AI shortlisting.");
 
+        // 2. Filter candidates who haven't been notified yet
         List<JobApplication> appsToRank = applicationRepo.findByJobId(jobId).stream()
                 .filter(app -> !app.isMailSent())
                 .toList();
 
         if (appsToRank.isEmpty()) return;
 
+        // 3. Map to Updated DTO (Using Roll Number as student_id)
         List<CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new CandidateInfo(s.getRollNumber(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()),s.getClgName());
+            return new CandidateInfo(
+                s.getRollNumber(),          // student_id
+                s.getResumeUrl(),           // resume_url
+                s.getGithubUrl(),           // github_url
+                extractLeetCodeUsername(s.getLeetcodeUrl()), // leetcode_username
+                s.getClgName()              // college_name
+            );
         }).toList();
 
         RankingRequest request = new RankingRequest(job.getDescription(), candidateInfos);
@@ -265,9 +290,11 @@ public class JobService {
 
             if (response != null) {
                 for (RankingResponse res : response) {
-                    applicationRepo.findByJobIdAndStudentEmailIgnoreCase(jobId, res.candidate_id())
+                    // CRITICAL: Look up by Roll Number (res.candidate_id() contains the roll number)
+                    applicationRepo.findByJobIdAndStudentRollNumber(jobId, res.student_id())
                             .ifPresent(app -> {
                                 app.setMatchScore(res.final_score());
+                                // Only update status if it's currently PENDING (don't override manual recruiter changes)
                                 if ("PENDING".equals(app.getStatus())) {
                                     String aiStatus = res.status().toLowerCase();
                                     if ("shortlist".equals(aiStatus)) app.setStatus("SHORTLISTED");
@@ -282,6 +309,7 @@ public class JobService {
             throw new RuntimeException("AI Ranking Error: " + e.getMessage());
         }
     }
+
     // NEW: Bulk Email Method
     @Transactional
     public void sendBulkNotifications(Long jobId, String recruiterEmail) {
@@ -366,7 +394,13 @@ public class JobService {
 
         List<fastapi.CandidateInfo> candidateInfos = appsToRank.stream().map(app -> {
             Student s = app.getStudent();
-            return new fastapi.CandidateInfo(s.getRollNumber(), s.getResumeUrl(), s.getGithubUrl(), extractLeetCodeUsername(s.getLeetcodeUrl()),s.getClgName());
+            return new fastapi.CandidateInfo(
+                s.getRollNumber(), 
+                s.getResumeUrl(), 
+                s.getGithubUrl(), 
+                extractLeetCodeUsername(s.getLeetcodeUrl()), 
+                s.getClgName()
+            );
         }).toList();
 
         fastapi.RankingRequest request = new fastapi.RankingRequest(job.getDescription(), candidateInfos);
@@ -379,17 +413,16 @@ public class JobService {
             throw new RuntimeException("AI Ranking Error: " + e.getMessage());
         }
     }
+
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getJobsWithAiScoring(String rollNumber) {
-        // 1. Fetch Student from DB
         Student student = studentRepo.findById(rollNumber)
                 .orElseThrow(() -> new EntityNotFoundException("Student not found"));
 
-        // 2. Fetch all Active Jobs from DB
         List<Job> activeJobs = jobRepo.findByIsActive(true);
         if (activeJobs.isEmpty()) return List.of();
 
-        // 3. Prepare AI Request Payload using your FastAPI DTO wrapper
+        // Updated StudentProfile to match your fastapi.StudentProfile record
         fastapi.StudentProfile profile = new fastapi.StudentProfile(
                 student.getRollNumber(),
                 student.getResumeUrl(),
@@ -408,15 +441,9 @@ public class JobService {
         fastapi.StudentMatchRequest aiRequest = new fastapi.StudentMatchRequest(profile, jdList);
 
         try {
-            // 4. Call FastAPI (Method: POST, Endpoint: /match-student-jds?mode=lite)
             String url = fastApiUrl + "/match-student-jds?mode=lite";
-            fastapi.StudentMatchResponse[] aiResults = fastApiRestTemplate.postForObject(
-                    url,
-                    aiRequest,
-                    fastapi.StudentMatchResponse[].class
-            );
+            fastapi.StudentMatchResponse[] aiResults = fastApiRestTemplate.postForObject(url, aiRequest, fastapi.StudentMatchResponse[].class);
 
-            // Map AI results by Job ID for efficient lookups
             Map<String, fastapi.StudentMatchResponse> aiMap = new HashMap<>();
             if (aiResults != null) {
                 for (fastapi.StudentMatchResponse res : aiResults) {
@@ -424,37 +451,33 @@ public class JobService {
                 }
             }
 
-            // 5. Build final response: Combine Job Entity + AI Scores + Application Status
             return activeJobs.stream().map(job -> {
-                        Map<String, Object> responseMap = new HashMap<>();
-                        fastapi.StudentMatchResponse aiData = aiMap.get(String.valueOf(job.getId()));
+                Map<String, Object> responseMap = new HashMap<>();
+                fastapi.StudentMatchResponse aiData = aiMap.get(String.valueOf(job.getId()));
+                Optional<JobApplication> appOpt = applicationRepo.findByJobIdAndStudentRollNumber(job.getId(), rollNumber);
 
-                        // Check if the student has already applied to this job
-                        Optional<JobApplication> appOpt = applicationRepo.findByJobIdAndStudentRollNumber(job.getId(), rollNumber);
+                responseMap.put("job", job);
+                responseMap.put("aiStats", aiData);
+                responseMap.put("hasApplied", appOpt.isPresent());
+                responseMap.put("applicationStatus", appOpt.map(JobApplication::getStatus).orElse(null));
+                responseMap.put("mailSent", appOpt.map(JobApplication::isMailSent).orElse(false));
 
-                        responseMap.put("job", job);
-                        responseMap.put("aiStats", aiData); // Includes score, rank, reason, role_level, etc.
-                        responseMap.put("hasApplied", appOpt.isPresent());
-                        responseMap.put("applicationStatus", appOpt.map(JobApplication::getStatus).orElse(null));
-                        responseMap.put("mailSent", appOpt.map(JobApplication::isMailSent).orElse(false));
-
-                        return responseMap;
-                    })
-                    .sorted((a, b) -> {
-                        // Sort by Rank provided by AI (Rank 1 at the top)
-                        fastapi.StudentMatchResponse resA = (fastapi.StudentMatchResponse) a.get("aiStats");
-                        fastapi.StudentMatchResponse resB = (fastapi.StudentMatchResponse) b.get("aiStats");
-                        if (resA == null || resB == null) return 0;
-                        return Integer.compare(resA.rank(), resB.rank());
-                    })
-                    .collect(Collectors.toList());
+                return responseMap;
+            })
+            .sorted((a, b) -> {
+                fastapi.StudentMatchResponse resA = (fastapi.StudentMatchResponse) a.get("aiStats");
+                fastapi.StudentMatchResponse resB = (fastapi.StudentMatchResponse) b.get("aiStats");
+                if (resA == null || resB == null) return 0;
+                return Integer.compare(resA.rank(), resB.rank());
+            })
+            .collect(Collectors.toList());
 
         } catch (Exception e) {
-            // Log error and fallback: You might want to return jobs without scores if AI is down
             System.err.println("AI Scoring Error: " + e.getMessage());
-            throw new RuntimeException("Could not fetch AI job recommendations. Please try again later.");
+            throw new RuntimeException("Could not fetch AI job recommendations.");
         }
     }
+    
 
     public fastapi.SkillGapReportResponse getSkillGapReport(fastapi.SkillGapReportRequest request) {
         try {

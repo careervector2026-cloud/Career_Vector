@@ -25,6 +25,18 @@ public class EmailService {
      * Sends an automated shortlist notification using the professional template.
      * Triggered by the recruiter when they click the 'Send' button on a shortlisted candidate.
      */
+    public void sendSelectionNotification(String to, String name, String jobTitle, String companyName) {
+        String subject = "Congratulations! Selection for " + jobTitle;
+        String content = "<h1>Hired!</h1>"
+                + "<p>Dear <b>" + name + "</b>,</p>"
+                + "<p>We are absolutely thrilled to inform you that <b>" + companyName + "</b> has selected you for the <b>" + jobTitle + "</b> position!</p>"
+                + "<p>The team was highly impressed with your performance throughout the interview process and your technical skills.</p>"
+                + "<p>Our HR department will reach out to you shortly with the official offer letter and onboarding details.</p>"
+                + "<br><p>Welcome to the team!</p>"
+                + "<p>Best Regards,<br>The " + companyName + " Recruitment Team</p>";
+        
+        sendEmail(to, subject, content);
+    }
     public void sendShortlistNotification(String toEmail, String studentName, String jobTitle, String companyName) {
         String subject = "Application Update: Shortlisted for " + jobTitle;
         String bodyContent = "Hi " + studentName + ",\n\n" +

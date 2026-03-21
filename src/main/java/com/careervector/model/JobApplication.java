@@ -3,6 +3,9 @@ package com.careervector.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -32,4 +35,10 @@ public class JobApplication {
     private boolean isMailSent = false;
     // Add to JobApplication.java
     private Double matchScore; // Stores the final_score from AI
+ // Add this inside com.careervector.model.JobApplication.java
+ // Inside com.careervector.model.JobApplication.java
+
+    @OneToOne(mappedBy = "application", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference // This is the "forward" part of the relationship
+    private Interview interview;
 }

@@ -17,7 +17,7 @@ public class fastapi {
     ) {}
     // Response Object
     public record RankingResponse(
-            String candidate_id,  // Maps to "candidate_id" in JSON
+            String student_id,  // Maps to "candidate_id" in JSON
             int rank,             // Maps to "rank"
             double final_score,   // Maps to "final_score"
             String status         // Maps to "status" ("shortlist", "review", or "reject")

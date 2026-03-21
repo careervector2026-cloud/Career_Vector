@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
 
 @Service
 public class StudentService {
@@ -205,4 +206,6 @@ public class StudentService {
         student.setPassword(passwordEncoder.encode(password));
         studentRepo.save(student);
     }
+    
+    public List<Student> getStudentsWithCollegeName(String clgName) { return studentRepo.findByClgName(clgName);}
 }

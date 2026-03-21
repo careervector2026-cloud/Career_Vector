@@ -5,6 +5,8 @@ import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Interview {
@@ -12,8 +14,11 @@ public class Interview {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+ // Inside com.careervector.model.Interview.java
+
     @OneToOne
     @JoinColumn(name = "application_id")
+    @JsonBackReference // This prevents Jackson from re-serializing the application
     private JobApplication application;
 
     private LocalDate interviewDate;

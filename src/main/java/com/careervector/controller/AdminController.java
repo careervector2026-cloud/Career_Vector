@@ -5,11 +5,15 @@ import com.careervector.dto.LoginData;
 import com.careervector.model.Admin;
 import com.careervector.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriComponentsBuilder;
+
 import java.util.Map;
 
 @RestController
@@ -80,5 +84,34 @@ public class AdminController {
         }
 
         return new ResponseEntity<>("Invalid Credentials", HttpStatus.UNAUTHORIZED);
+    }
+    @GetMapping("/get-students/{college_name}")
+    public ResponseEntity<?> getStudents(@PathVariable("college_name") String college_name){
+    	return ResponseEntity.ok(adminService.getStudents(college_name));
+    }
+    
+    @GetMapping("/placement-funnel")
+    public ResponseEntity<Object> getPlacementFunnel(@RequestParam String collegeName) {
+        return ResponseEntity.ok(adminService.fetchPlacementFunnel(collegeName));
+    }
+
+    @GetMapping("/top-students")
+    public ResponseEntity<Object> getTopStudents(@RequestParam String collegeName) {
+        return ResponseEntity.ok(adminService.fetchTopStudents(collegeName));
+    }
+
+    @GetMapping("/at-risk-students")
+    public ResponseEntity<Object> getAtRiskStudents(@RequestParam String collegeName) {
+        return ResponseEntity.ok(adminService.fetchAtRiskStudents(collegeName));
+    }
+
+    @GetMapping("/skill-gap-trends")
+    public ResponseEntity<Object> getSkillGapTrends(@RequestParam String collegeName) {
+        return ResponseEntity.ok(adminService.fetchSkillGapTrends(collegeName));
+    }
+
+    @GetMapping("/student-progression/{studentId}")
+    public ResponseEntity<Object> getStudentProgression(@PathVariable String studentId) {
+        return ResponseEntity.ok(adminService.fetchStudentProgression(studentId));
     }
 }
