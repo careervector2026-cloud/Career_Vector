@@ -91,27 +91,27 @@ public class AdminController {
     }
     
     @GetMapping("/placement-funnel")
-    public ResponseEntity<Object> getPlacementFunnel(@RequestParam String collegeName) {
+    public ResponseEntity<Object> getPlacementFunnel(@RequestParam("collegeName") String collegeName) {
         return ResponseEntity.ok(adminService.fetchPlacementFunnel(collegeName));
     }
 
     @GetMapping("/top-students")
-    public ResponseEntity<Object> getTopStudents(@RequestParam String collegeName) {
+    public ResponseEntity<Object> getTopStudents(@RequestParam("collegeName") String collegeName) {
         return ResponseEntity.ok(adminService.fetchTopStudents(collegeName));
     }
 
     @GetMapping("/at-risk-students")
-    public ResponseEntity<Object> getAtRiskStudents(@RequestParam String collegeName) {
+    public ResponseEntity<Object> getAtRiskStudents(@RequestParam("collegeName") String collegeName) {
         return ResponseEntity.ok(adminService.fetchAtRiskStudents(collegeName));
     }
 
     @GetMapping("/skill-gap-trends")
-    public ResponseEntity<Object> getSkillGapTrends(@RequestParam String collegeName) {
+    public ResponseEntity<Object> getSkillGapTrends(@RequestParam("collegeName") String collegeName) {
         return ResponseEntity.ok(adminService.fetchSkillGapTrends(collegeName));
     }
 
     @GetMapping("/student-progression/{studentId}")
-    public ResponseEntity<Object> getStudentProgression(@PathVariable String studentId) {
+    public ResponseEntity<Object> getStudentProgression(@PathVariable("studentId") String studentId) {
         return ResponseEntity.ok(adminService.fetchStudentProgression(studentId));
     }
 }

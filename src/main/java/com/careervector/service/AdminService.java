@@ -84,14 +84,15 @@ public class AdminService {
 
     // --- Helper Method for GET Requests ---
     private Object executeGetRequest(String path, String paramName, String paramValue) {
-        // build(false) prevents Spring from double-encoding the percent signs
         String url = UriComponentsBuilder.fromHttpUrl(fastApiUrl + path)
                 .queryParam(paramName, paramValue)
                 .build()
                 .toUriString();
         try {
-            return fastApiRestTemplate.getForObject(url, Object.class);
+            Object response = fastApiRestTemplate.getForObject(url, Object.class);
+            return response;
         } catch (Exception e) {
+            System.err.println("DEBUG: Error -> " + e.getMessage());
             throw new RuntimeException("FastAPI Error: " + e.getMessage());
         }
     }
