@@ -15,7 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
-
+import com.careervector.service.JobService;
 @RestController
 @RequestMapping("/api/admin")
 @CrossOrigin(origins = "${app.frontend.url}")
@@ -113,5 +113,17 @@ public class AdminController {
     @GetMapping("/student-progression/{studentId}")
     public ResponseEntity<Object> getStudentProgression(@PathVariable("studentId") String studentId) {
         return ResponseEntity.ok(adminService.fetchStudentProgression(studentId));
+    }
+    
+    @Autowired
+    private JobService jobService;
+    @GetMapping("/get-jobs-active")
+    public ResponseEntity<?> getActiveJobs() {
+    	return ResponseEntity.ok(jobService.getJobs());
+    }
+    
+    @PostMapping("/market-demand")
+    public ResponseEntity<?> getMarketDemand(@RequestBody Map<String, Object> payload){
+    	return ResponseEntity.ok(adminService.fetchMarketDemand(payload));
     }
 }
