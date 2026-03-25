@@ -90,11 +90,7 @@ public class AdminController {
     	return ResponseEntity.ok(adminService.getStudents(college_name));
     }
     
-    @GetMapping("/placement-funnel")
-    public ResponseEntity<Object> getPlacementFunnel(@RequestParam("collegeName") String collegeName) {
-        return ResponseEntity.ok(adminService.fetchPlacementFunnel(collegeName));
-    }
-
+    
     @GetMapping("/top-students")
     public ResponseEntity<Object> getTopStudents(@RequestParam("collegeName") String collegeName) {
         return ResponseEntity.ok(adminService.fetchTopStudents(collegeName));
@@ -117,11 +113,16 @@ public class AdminController {
     
     @Autowired
     private JobService jobService;
-    @GetMapping("/get-jobs-active")
-    public ResponseEntity<?> getActiveJobs() {
-    	return ResponseEntity.ok(jobService.getJobs());
+ // Inside AdminController.java
+    @GetMapping("/get-all-jobs") // Changed name for clarity
+    public ResponseEntity<?> getAllJobs() {
+        return ResponseEntity.ok(jobService.getAllJobs());
     }
-    
+    @PostMapping("/placement-funnel")
+    public ResponseEntity<?> getPlacementFunnel(@RequestBody Map<String, Object> payload) {
+        
+        return ResponseEntity.ok(adminService.fetchPlacementFunnel(payload));
+    }
     @PostMapping("/market-demand")
     public ResponseEntity<?> getMarketDemand(@RequestBody Map<String, Object> payload){
     	return ResponseEntity.ok(adminService.fetchMarketDemand(payload));

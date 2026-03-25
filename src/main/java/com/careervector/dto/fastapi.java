@@ -125,7 +125,11 @@ public class fastapi {
             List<GraphNode> nodes,
             List<GraphEdge> edges
     ) {}
-
+    public record RecruiterDecisionRequest(
+        String student_id,
+        String jd_text,
+        String decision
+    ) {}
     public record GraphNode(String id, String label, String type) {}
     public record GraphEdge(String from, String to) {}
 }

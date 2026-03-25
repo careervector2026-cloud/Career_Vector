@@ -177,11 +177,23 @@ public class JobService {
         }
 
         app.setStatus(newStatus);
-        return applicationRepo.save(app);
+        JobApplication savedApp = applicationRepo.save(app);
+        syncDecisionToAi(
+                savedApp.getStudent().getRollNumber(), 
+                savedApp.getJob().getDescription(), 
+                newStatus
+            );
+        
+        return savedApp;
     }
 
     public List<Job> getJobs() {
         return jobRepo.findByIsActive(true);
+    }
+ // Add this to JobService.java
+    public List<Job> getAllJobs() {
+        // This ignores the isActive flag and returns everything in the job table
+        return jobRepo.findAll();
     }
 
     // --- MAIL LOGIC ---
@@ -247,7 +259,20 @@ public class JobService {
     //used for ai shortlisting
     @Value("${fastapi.url}")
     private String fastApiUrl;
-
+    private void syncDecisionToAi(String studentId, String jdText, String status) {
+        try {
+            String url = fastApiUrl + "/recruiter/decision-by-jd-text";
+            fastapi.RecruiterDecisionRequest syncReq = new fastapi.RecruiterDecisionRequest(
+                studentId, 
+                jdText, 
+                status.toLowerCase()
+            );
+            fastApiRestTemplate.postForObject(url, syncReq, Void.class);
+        } catch (Exception e) {
+            // We log the error but don't crash the main transaction
+            System.err.println("Failed to sync decision to AI: " + e.getMessage());
+        }
+    }
     @Transactional
     public void autoShortlistCandidates(Long jobId, String recruiterEmail) {
         Job job = jobRepo.findById(jobId).orElseThrow(() -> new EntityNotFoundException("Job not found"));
@@ -290,18 +315,28 @@ public class JobService {
 
             if (response != null) {
                 for (RankingResponse res : response) {
-                    // CRITICAL: Look up by Roll Number (res.candidate_id() contains the roll number)
                     applicationRepo.findByJobIdAndStudentRollNumber(jobId, res.student_id())
                             .ifPresent(app -> {
                                 app.setMatchScore(res.final_score());
-                                // Only update status if it's currently PENDING (don't override manual recruiter changes)
+                                
                                 if ("PENDING".equals(app.getStatus())) {
                                     String aiStatus = res.status().toLowerCase();
-                                    if ("shortlist".equals(aiStatus)) app.setStatus("SHORTLISTED");
-                                    else if ("reject".equals(aiStatus)) app.setStatus("REJECTED");
-                                    else if ("review".equals(aiStatus)) app.setStatus("UNDER_REVIEW");
+                                    String dbStatus = "PENDING";
+                                    
+                                    if ("shortlist".equals(aiStatus)) dbStatus = "SHORTLISTED";
+                                    else if ("reject".equals(aiStatus)) dbStatus = "REJECTED";
+                                    else if ("review".equals(aiStatus)) dbStatus = "UNDER_REVIEW";
+                                    
+                                    app.setStatus(dbStatus);
+                                    applicationRepo.save(app);
+
+                                    // --- NEW: Sync the AI's "Decision" to the learning endpoint ---
+                                    syncDecisionToAi(
+                                        res.student_id(), 
+                                        app.getJob().getDescription(), 
+                                        dbStatus
+                                    );
                                 }
-                                applicationRepo.save(app);
                             });
                 }
             }

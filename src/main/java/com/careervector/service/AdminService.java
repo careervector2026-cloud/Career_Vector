@@ -101,9 +101,7 @@ public class AdminService {
         }
     }
 
-    public Object fetchPlacementFunnel(String collegeName) {
-        return executeGetRequest("/admin/placement-funnel", "college_name", collegeName);
-    }
+    
 
     public Object fetchTopStudents(String collegeName) {
         return executeGetRequest("/admin/top-students", "college_name", collegeName);
@@ -121,25 +119,26 @@ public class AdminService {
         return executeGetRequest("/admin/student-progression", "student_id", studentId);
     }
 
-    public Object fetchMarketDemand(Map<String, Object> payload) {
-        String url = fastApiUrl + "/market-demand";
-        
+ // --- New Helper Method for POST Requests ---
+    private Object executePostRequest(String path, Map<String, Object> payload) {
+        String url = fastApiUrl + path;
         try {
-            // 1. Set the headers to indicate JSON content
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            // 2. Wrap the payload (Map) into an HttpEntity
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
-//            System.out.println("DEBUG: Requesting POST -> " + url);
-//            System.out.println("DEBUG: Payload -> " + payload);
-//            // 3. Execute POST request
-            Object response = fastApiRestTemplate.postForObject(url, requestEntity, Object.class);
-//            System.out.println("DEBUG: Market Demand Received -> " + response);
-            return response;
+            return fastApiRestTemplate.postForObject(url, requestEntity, Object.class);
         } catch (Exception e) {
-            System.err.println("❌ FastAPI POST Error: " + e.getMessage());
-            throw new RuntimeException("AI Service Error: Failed to analyze market demand.");
+            throw new RuntimeException("AI Service POST Error [" + path + "]: " + e.getMessage());
         }
+    }
+
+    // Updated Methods using the helper
+    public Object fetchPlacementFunnel(Map<String, Object> payload) {
+        return executePostRequest("/admin/placement-funnel", payload);
+    }
+
+    public Object fetchMarketDemand(Map<String, Object> payload) {
+        return executePostRequest("/market-demand", payload);
     }
     
 }
