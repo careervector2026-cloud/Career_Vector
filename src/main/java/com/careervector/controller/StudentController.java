@@ -371,5 +371,16 @@ public class StudentController {
     public ResponseEntity<List<MockInterview>> getMockHistory(@RequestParam String email) {
         return ResponseEntity.ok(mockInterviewRepo.findByStudentEmailOrderByCreatedAtDesc(email));
     }
-    
+ // Inside StudentController.java
+
+    /**
+     * Endpoint to trigger AI skill extraction from a student's resume.
+     */
+    @PostMapping("/extract-skills")
+    public ResponseEntity<?> extractSkills(@RequestBody Map<String, String> payload) {
+        String resumeUrl = payload.get("resume_url");
+        if (resumeUrl == null) return ResponseEntity.badRequest().body("resume_url is required");
+        
+        return ResponseEntity.ok(studentService.extractSkillsFromResume(resumeUrl));
+    }    
 }

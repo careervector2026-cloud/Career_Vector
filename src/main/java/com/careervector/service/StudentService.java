@@ -7,9 +7,15 @@ import com.careervector.repo.StudentRepo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
@@ -208,4 +214,36 @@ public class StudentService {
     }
     
     public List<Student> getStudentsWithCollegeName(String clgName) { return studentRepo.findByClgName(clgName);}
+ // Inside StudentService.java
+
+    /**
+     * Connects to FastAPI to extract skills from a resume URL.
+     */
+ // FIX: Move the @Value to the String variable, not the RestTemplate
+    @Value("${fastapi.url}")
+    private String fastApiUrl;
+
+    @Autowired 
+    @Qualifier("fastApiRestTemplate") 
+    private RestTemplate fastApiRestTemplate;
+
+    public Map<String, Object> extractSkillsFromResume(String resumeUrl) {
+        // Use the instance variable fastApiUrl
+        String url = fastApiUrl + "/extract-skills";
+
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("resume_url", resumeUrl);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            return fastApiRestTemplate.postForObject(url, entity, Map.class);
+        } catch (Exception e) {
+            System.err.println("FastAPI Skill Extraction Error: " + e.getMessage());
+            throw new RuntimeException("Failed to extract skills from AI service.");
+        }
+    }
 }

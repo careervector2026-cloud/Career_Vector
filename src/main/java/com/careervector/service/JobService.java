@@ -570,4 +570,36 @@ public class JobService {
             throw new RuntimeException("AI ATS Service (Scanner) is currently unreachable: " + e.getMessage());
         }
     }
+    @Autowired
+    private JobApplicationRepo jobApplicationRepo;
+    
+    public Map<String, Object> getRecruiterStats(String email) {
+        Map<String, Object> stats = new HashMap<>();
+        
+        // Fetch jobs once for counts
+        List<Job> allJobs = jobRepo.findByRecruiterEmail(email);
+
+        long activeJobsCount = allJobs.stream().filter(Job::isActive).count();
+        long totalCandidates = allJobs.stream()
+                .mapToLong(job -> applicationRepo.findByJobId(job.getId()).size())
+                .sum();
+
+        // 1. Pending: Only from ACTIVE jobs
+        stats.put("pending", applicationRepo.countPendingForActiveJobs(email));
+
+        // 2. Shortlisted: From ALL jobs (Active + Closed) - Updated logic
+        stats.put("shortlisted", applicationRepo.countByStatusForAllJobs(email, "SHORTLISTED"));
+
+        // 3. Rejected: Only from CLOSED jobs
+        stats.put("rejected", applicationRepo.countByStatusForClosedJobs(email, "REJECTED"));
+
+        // 4. Hired: Only from CLOSED jobs
+        stats.put("hired", applicationRepo.countHiredForClosedJobs(email));
+
+        // General Stats
+        stats.put("activeJobs", activeJobsCount);
+        stats.put("totalCandidates", totalCandidates);
+
+        return stats;
+    }
 }

@@ -63,7 +63,7 @@ public class Job {
 
     @Setter
     @Getter
-    @Column(nullable = false)
+    @Column(name = "is_active", nullable = false) // Explicitly match your DB column
     private boolean isActive = true;
 
     @Setter

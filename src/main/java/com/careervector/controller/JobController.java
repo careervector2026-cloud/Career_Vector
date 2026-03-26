@@ -91,27 +91,14 @@ public class JobController {
     }
 
     // --- DASHBOARD STATS ---
-
+ // --- DASHBOARD STATS ---
+    // Only keep this ONE version of the /stats mapping
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getRecruiterStats(@RequestParam String email) {
-        List<Job> myJobs = jobService.getJobsByRecruiterEmail(email);
-
-        long activeJobs = myJobs.stream().filter(Job::isActive).count();
-
-        List<JobApplication> allApps = myJobs.stream()
-                .flatMap(job -> jobService.getApplicantsForJob(job.getId(), email).stream())
-                .toList();
-
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("activeJobs", activeJobs);
-        stats.put("totalCandidates", allApps.size());
-        stats.put("applied", allApps.stream().filter(a -> "PENDING".equals(a.getStatus())).count());
-        stats.put("shortlisted", allApps.stream().filter(a -> "SHORTLISTED".equals(a.getStatus())).count());
-        stats.put("rejected", allApps.stream().filter(a -> "REJECTED".equals(a.getStatus())).count());
-
-        return ResponseEntity.ok(stats);
+        return ResponseEntity.ok(jobService.getRecruiterStats(email));
     }
-    @PostMapping("/{jobId}/auto-shortlist")
+    
+        @PostMapping("/{jobId}/auto-shortlist")
     public ResponseEntity<Map<String, String>> triggerAiShortlisting(
             @PathVariable Long jobId,
             @RequestParam String email) { // recruiterEmail for security check
@@ -195,4 +182,9 @@ public class JobController {
                                  .body(Map.of("error", e.getMessage()));
         }
     }
+    @GetMapping("get-all-jobs")
+    public ResponseEntity<?> getAllJobs(){
+    	return ResponseEntity.ok(jobService.getAllJobs());
+    }
+    
 }
